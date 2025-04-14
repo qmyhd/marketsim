@@ -1,0 +1,8 @@
+discord.py
+aiosqlite
+aiohttp
+apscheduler
+matplotlib
+numpy
+pandas
+yfinance
