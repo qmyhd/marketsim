@@ -33,7 +33,7 @@ def main():
         sys.exit(1)
     
     print("\n🌐 Starting web dashboard...")
-    print("💡 Visit http://localhost:5001 to view the dashboard")
+    print("💡 Visit http://localhost:8080 to view the dashboard")
     print("💡 Press Ctrl+C to stop the server")
     print("=" * 50)
     
@@ -41,13 +41,13 @@ def main():
         # Import and run the dashboard
         from dashboard_robinhood import app
         print("🚀 Starting Flask server...")
-        app.run(debug=False, host="0.0.0.0", port=5001)
+        app.run(debug=False, host="0.0.0.0", port=8080)
         
     except KeyboardInterrupt:
         print("\n👋 Dashboard stopped by user")
     except Exception as e:
         print(f"\n❌ Error starting dashboard: {e}")
-        print("💡 Check your environment variables and that port 5001 is available")
+        print("💡 Check your environment variables and that port 8080 is available")
         sys.exit(1)
 
 if __name__ == "__main__":

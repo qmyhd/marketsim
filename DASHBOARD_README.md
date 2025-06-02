@@ -4,13 +4,13 @@ This enhanced dashboard provides a comprehensive view of the trading game with m
 
 ## 🚀 Features
 
-### Main Dashboard (http://localhost:5001)
+### Main Dashboard (http://localhost:8080)
 - **Leaderboard**: Sortable table showing all traders ranked by portfolio value
 - **Market Summary**: Key statistics including total AUM, average ROI, and best performer
 - **Real-time Data**: Live stock prices from Finnhub API
 - **Modern UI**: Dark theme with Bootstrap 5, Font Awesome icons, and animations
 
-### Individual Portfolio Pages (http://localhost:5001/user/{user_id})
+### Individual Portfolio Pages (http://localhost:8080/user/{user_id})
 - **Portfolio Overview**: Cash, holdings value, total value, and ROI
 - **Interactive Charts**: 
   - Pie chart showing portfolio allocation
@@ -55,10 +55,10 @@ python dashboard_robinhood.py
 ```
 
 ### Accessing Features
-- **Main Dashboard**: http://localhost:5001
-- **Jack's Portfolio**: http://localhost:5001/user/236917392918183937  
-- **Qais's Portfolio**: http://localhost:5001/user/574728692734341122
-- **Peter's Portfolio**: http://localhost:5001/user/285148631812628481
+- **Main Dashboard**: http://localhost:8080
+- **Jack's Portfolio**: http://localhost:8080/user/236917392918183937  
+- **Qais's Portfolio**: http://localhost:8080/user/574728692734341122
+- **Peter's Portfolio**: http://localhost:8080/user/285148631812628481
 
 ### Navigation
 - Click on "View Portfolio" buttons to see individual user details
@@ -92,7 +92,7 @@ The dashboard integrates seamlessly with the existing trading bot database:
 ### API Settings
 - **Finnhub API Key**: Configured for real-time stock prices
 - **Database**: SQLite file in same directory as script
-- **Port**: Runs on port 5001 (configurable)
+- **Port**: Runs on port 8080 (configurable)
 
 ### Customization
 - **Colors**: Modify CSS variables for different themes

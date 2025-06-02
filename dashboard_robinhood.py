@@ -1267,7 +1267,7 @@ def api_refresh():
 # ──────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     print(f"🚀 Starting {APP_NAME}")
-    port = int(os.getenv("PORT", 5001))  # Use Railway's PORT or default to 5001
+    port = int(os.getenv("PORT", 8080))  # Use Fly.io's PORT or default to 8080
     print(f"📊 Dashboard will be available at: http://localhost:{port}")
     print("🎨 Now featuring Robinhood-style design!")
     app.run(debug=False, host="0.0.0.0", port=port)
