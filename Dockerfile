@@ -1,5 +1,5 @@
 # Multi-stage Dockerfile for Market Sim Trading Bot
-FROM python:3.11-slim as base
+FROM python:3.12-slim-bookworm AS base
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -10,8 +10,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Create app directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+# Install system dependencies and apply all security updates
+RUN apt-get update && apt-get upgrade -y && apt-get dist-upgrade -y && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
