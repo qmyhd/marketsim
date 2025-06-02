@@ -4,9 +4,15 @@ import aiosqlite
 import aiohttp
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 import io
-from datetime import datetime
+from datetime import datetime, date
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
 scheduler = AsyncIOScheduler()
 print("Starting bot script...")  # Add this to the top of the file
 
@@ -18,23 +24,39 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 DB_NAME = "trading_game.db"
+
 async def get_price(symbol):
     url = f"https://finnhub.io/api/v1/quote?symbol={symbol.upper()}&token={FINNHUB_API_KEY}"
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as resp:
             data = await resp.json()
             return data.get("c")  # current price
+
+async def get_company_name(symbol):
+    """Get company name from Finnhub API"""
+    url = f"https://finnhub.io/api/v1/stock/profile2?symbol={symbol.upper()}&token={FINNHUB_API_KEY}"
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            data = await resp.json()
+            return data.get("name", symbol.upper())
         
 async def daily_update():
-    channel = bot.get_channel(1361409115796017352)  # Replace with actual channel ID
-    if not channel:
+    # Get Discord channel ID from environment variable
+    channel_id = os.getenv("DISCORD_CHANNEL_ID")
+    if not channel_id:
+        print("Warning: DISCORD_CHANNEL_ID not set in environment variables")
         return
-
+    
+    channel = bot.get_channel(int(channel_id))
+    if not channel:
+        print(f"Warning: Could not find Discord channel with ID: {channel_id}")
+        return
+        
     async with aiosqlite.connect(DB_NAME) as db:
-        async with db.execute("SELECT user_id, cash, last_value FROM users") as cursor:
+        async with db.execute("SELECT user_id, cash, last_value, initial_value FROM users") as cursor:
             users = await cursor.fetchall()
 
-        for user_id, cash, last_value in users:
+        for user_id, cash, last_value, initial_value in users:
             async with db.execute("SELECT symbol, shares FROM holdings WHERE user_id = ?", (user_id,)) as cursor:
                 holdings = await cursor.fetchall()
 
@@ -42,17 +64,17 @@ async def daily_update():
             for symbol, shares in holdings:
                 price = await get_price(symbol)
                 if price:
-                    total_value += shares * price
-
-            # Update last_value
+                    total_value += shares * price            # Update last_value
             await db.execute("UPDATE users SET last_value = ? WHERE user_id = ?", (total_value, user_id))
             today = date.today().isoformat()
             await db.execute(
                 "INSERT OR REPLACE INTO history (user_id, date, portfolio_value) VALUES (?, ?, ?)",
                 (user_id, today, total_value)
-)
+            )
+            
             user = await bot.fetch_user(int(user_id))
-            total_gain = ((total_value - 100000) / 100000) * 100
+            # Calculate ROI using initial_value instead of hardcoded 1000000
+            total_gain = ((total_value - initial_value) / initial_value) * 100
             day_gain = ((total_value - last_value) / last_value) * 100 if last_value else 0
 
             await channel.send(
@@ -72,9 +94,10 @@ async def on_ready():
         await db.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 user_id TEXT PRIMARY KEY,
-                cash REAL DEFAULT 100000,
-                initial_value REAL DEFAULT 100000,
-                last_value REAL DEFAULT 100000
+                cash REAL DEFAULT 1000000,
+                initial_value REAL DEFAULT 1000000,
+                last_value REAL DEFAULT 1000000,
+                username TEXT
             )
         ''')
         await db.execute('''
@@ -103,17 +126,18 @@ async def on_ready():
 @bot.command(name="join")
 async def join(ctx):
     user_id = str(ctx.author.id)
+    username = ctx.author.display_name
 
     async with aiosqlite.connect(DB_NAME) as db:
         async with db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)) as cursor:
             user = await cursor.fetchone()
-
+            
         if user:
             await ctx.send(f"{ctx.author.mention} you already joined!")
         else:
-            await db.execute("INSERT INTO users (user_id, cash) VALUES (?, ?)", (user_id, 100000))
+            await db.execute("INSERT INTO users (user_id, cash, username) VALUES (?, ?, ?)", (user_id, 1000000, username))
             await db.commit()
-            await ctx.send(f"{ctx.author.mention} welcome! You've been given $100,000 virtual cash.")
+            await ctx.send(f"{ctx.author.mention} welcome! You've been given $1,000,000 virtual cash.")
             
 @bot.command(name="balance")
 async def balance(ctx):
@@ -127,7 +151,7 @@ async def balance(ctx):
             cash = result[0]
             await ctx.send(f"{ctx.author.mention} your current balance is ${cash:,.2f}")
         else:
-            await ctx.send(f"{ctx.author.mention} you haven’t joined yet. Use `!join` to get started.")
+            await ctx.send(f"{ctx.author.mention} you haven't joined yet. Use `!join` to get started.")
             
 
 @bot.command(name="sell")
@@ -140,9 +164,13 @@ async def sell(ctx, symbol: str, quantity: int):
         return
 
     symbol = symbol.upper()
+    
+    # Get company name for verification
+    company_name = await get_company_name(symbol)
+    
     price = await get_price(symbol)
     if price is None or price == 0:
-        await ctx.send(f"Could not fetch live price for `{symbol}`.")
+        await ctx.send(f"Could not fetch live price for `{symbol}` ({company_name}).")
         return
 
     async with aiosqlite.connect(DB_NAME) as db:
@@ -150,12 +178,19 @@ async def sell(ctx, symbol: str, quantity: int):
         async with db.execute("SELECT shares, avg_price FROM holdings WHERE user_id = ? AND symbol = ?", (user_id, symbol)) as cursor:
             holding = await cursor.fetchone()
 
-        if not holding or holding[0] < quantity:
-            await ctx.send(f"You don't have enough shares of `{symbol}` to sell.")
+        if not holding:
+            await ctx.send(f"❌ You don't own any shares of `{symbol}` ({company_name}).")
+            return
+            
+        shares_owned, avg_price = holding
+        
+        if shares_owned < quantity:
+            await ctx.send(f"❌ You only have **{shares_owned}** shares of `{symbol}` ({company_name}) but tried to sell **{quantity}**.")
             return
 
-        shares_owned, avg_price = holding
         proceeds = price * quantity
+        gain_loss = (price - avg_price) * quantity
+        gl_symbol = "📈" if gain_loss >= 0 else "📉"
 
         # Update holdings
         if shares_owned == quantity:
@@ -172,7 +207,8 @@ async def sell(ctx, symbol: str, quantity: int):
         await db.execute("UPDATE users SET cash = ? WHERE user_id = ?", (new_cash, user_id))
         await db.commit()
 
-        await ctx.send(f"{ctx.author.mention} sold {quantity} shares of `{symbol}` at ${price:,.2f} each. Total: ${proceeds:,.2f}")
+        await ctx.send(f"✅ {ctx.author.mention} sold **{quantity} shares** of `{symbol}` ({company_name}) at ${price:,.2f} each\n"
+                      f"💰 Proceeds: ${proceeds:,.2f} {gl_symbol} P&L: ${gain_loss:+,.2f} | Cash: ${new_cash:,.2f}")
 
 @bot.command(name="portfolio")
 async def portfolio(ctx):
@@ -186,27 +222,63 @@ async def portfolio(ctx):
             await ctx.send(f"{ctx.author.mention} you have no holdings.")
             return
 
-        message_lines = [f"📊 **{ctx.author.display_name}'s Portfolio**"]
-        total_value = 0
+        # Get cash balance
+        async with db.execute("SELECT cash FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            result = await cursor.fetchone()
+        cash = result[0] if result else 0
+
+        header = f"📊 **{ctx.author.display_name}'s Portfolio**\n"
+        total_value = cash
+        holdings_lines = []
 
         for symbol, shares, avg_price in rows:
+            # Get company name for display
+            company_name = await get_company_name(symbol)
             price = await get_price(symbol)
             if not price:
                 continue
 
             position_value = shares * price
             unrealized = (price - avg_price) * shares
+            pnl_symbol = "📈" if unrealized >= 0 else "📉"
             total_value += position_value
 
-            message_lines.append(
-                f"• `{symbol}` — {shares} shares @ ${avg_price:.2f} → ${price:.2f} | "
-                f"Value: ${position_value:,.2f} | Unrealized: {'+' if unrealized >= 0 else '-'}${abs(unrealized):,.2f}"
-            )
+            # Compact format with company name
+            holdings_lines.append(
+                f"`{symbol}` ({company_name[:20]}{'...' if len(company_name) > 20 else ''})\n"
+                f"  {shares}@${avg_price:.2f}→${price:.2f} ${position_value:,.0f} {pnl_symbol}${abs(unrealized):,.0f}"
+            )        # Summary
+        holdings_value = total_value - cash
+        
+        # Get user's initial value for ROI calculation
+        async with db.execute("SELECT initial_value FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            initial_result = await cursor.fetchone()
+        initial_value = initial_result[0] if initial_result else 1000000
+        
+        roi = ((total_value - initial_value) / initial_value) * 100 if total_value > 0 else 0
+        
+        summary = (f"💰 Cash: ${cash:,.0f} | 💼 Holdings: ${holdings_value:,.0f}\n"
+                  f"📈 Total: ${total_value:,.0f} | ROI: {roi:+.1f}%")
 
-        message_lines.append(f"\n💼 **Total Holdings Value:** ${total_value:,.2f}")
-        await ctx.send("\n".join(message_lines))
+        # Split holdings into chunks if needed
+        chunk_size = 5  # Holdings per message (reduced due to company names)
+        for i in range(0, len(holdings_lines), chunk_size):
+            chunk = holdings_lines[i:i + chunk_size]
+            
+            if i == 0:  # First chunk gets header
+                message = header + "\n".join(chunk)
+            else:  # Subsequent chunks
+                message = "\n".join(chunk)
+            
+            # Add summary to last chunk
+            if i + chunk_size >= len(holdings_lines):
+                message += "\n\n" + summary
+            
+            await ctx.send(message)
+
 @bot.command(name="buy")
 async def buy(ctx, symbol: str, quantity: int):
+    """Buy shares with exact share quantity. Use !USD for dollar amount purchases."""
     user_id = str(ctx.author.id)
     quantity = int(quantity)
 
@@ -214,9 +286,14 @@ async def buy(ctx, symbol: str, quantity: int):
         await ctx.send("Quantity must be greater than 0.")
         return
 
+    symbol = symbol.upper()
+    
+    # Get company name for verification
+    company_name = await get_company_name(symbol)
+    
     price = await get_price(symbol)
     if price is None or price == 0:
-        await ctx.send(f"Could not fetch live price for `{symbol.upper()}`.")
+        await ctx.send(f"Could not fetch live price for `{symbol}` ({company_name}).")
         return
 
     cost = price * quantity
@@ -232,15 +309,16 @@ async def buy(ctx, symbol: str, quantity: int):
 
         balance = result[0]
         if balance < cost:
-            await ctx.send(f"Insufficient funds. You need ${cost:,.2f} but have ${balance:,.2f}")
+            await ctx.send(f"❌ **Insufficient funds!** You need ${cost:,.2f} but only have ${balance:,.2f}\n"
+                          f"💡 Try `!USD {symbol} {balance:.0f}` to buy with available cash.")
             return
 
-        # Deduct cash
+        # Proceed with purchase - deduct cash
         new_balance = balance - cost
         await db.execute("UPDATE users SET cash = ? WHERE user_id = ?", (new_balance, user_id))
 
         # Update holdings
-        async with db.execute("SELECT shares, avg_price FROM holdings WHERE user_id = ? AND symbol = ?", (user_id, symbol.upper())) as cursor:
+        async with db.execute("SELECT shares, avg_price FROM holdings WHERE user_id = ? AND symbol = ?", (user_id, symbol)) as cursor:
             holding = await cursor.fetchone()
 
         if holding:
@@ -249,16 +327,85 @@ async def buy(ctx, symbol: str, quantity: int):
             new_avg_price = ((old_shares * old_avg_price) + (quantity * price)) / total_shares
             await db.execute(
                 "UPDATE holdings SET shares = ?, avg_price = ? WHERE user_id = ? AND symbol = ?",
-                (total_shares, new_avg_price, user_id, symbol.upper())
+                (total_shares, new_avg_price, user_id, symbol)
             )
         else:
             await db.execute(
                 "INSERT INTO holdings (user_id, symbol, shares, avg_price) VALUES (?, ?, ?, ?)",
-                (user_id, symbol.upper(), quantity, price)
+                (user_id, symbol, quantity, price)
             )
 
         await db.commit()
-        await ctx.send(f"{ctx.author.mention} bought {quantity} shares of `{symbol.upper()}` at ${price:,.2f} each. Total: ${cost:,.2f}")
+        await ctx.send(f"✅ {ctx.author.mention} bought **{quantity} shares** of `{symbol}` ({company_name}) at ${price:,.2f} each\n"
+                      f"💰 Total cost: ${cost:,.2f} | Remaining cash: ${new_balance:,.2f}")
+
+@bot.command(name="USD")
+async def buy_usd(ctx, symbol: str, amount: float):
+    """Buy stocks with a dollar amount instead of share quantity."""
+    user_id = str(ctx.author.id)
+    amount = float(amount)
+
+    if amount <= 0:
+        await ctx.send("Amount must be greater than 0.")
+        return
+
+    symbol = symbol.upper()
+    
+    # Get company name for verification
+    company_name = await get_company_name(symbol)
+    
+    price = await get_price(symbol)
+    if price is None or price == 0:
+        await ctx.send(f"Could not fetch live price for `{symbol}` ({company_name}).")
+        return
+
+    # Calculate how many shares this amount can buy
+    shares_possible = int(amount / price)
+    actual_cost = shares_possible * price
+
+    if shares_possible == 0:
+        await ctx.send(f"❌ ${amount:,.2f} is not enough to buy even 1 share of `{symbol}` ({company_name}) at ${price:,.2f}")
+        return
+
+    async with aiosqlite.connect(DB_NAME) as db:
+        # Check user balance
+        async with db.execute("SELECT cash FROM users WHERE user_id = ?", (user_id,)) as cursor:
+            result = await cursor.fetchone()
+
+        if not result:
+            await ctx.send("You need to `!join` before trading.")
+            return
+
+        balance = result[0]
+        if balance < actual_cost:
+            await ctx.send(f"❌ **Insufficient funds!** You need ${actual_cost:,.2f} but only have ${balance:,.2f}")
+            return
+
+        # Proceed with purchase
+        new_balance = balance - actual_cost
+        await db.execute("UPDATE users SET cash = ? WHERE user_id = ?", (new_balance, user_id))
+
+        # Update holdings
+        async with db.execute("SELECT shares, avg_price FROM holdings WHERE user_id = ? AND symbol = ?", (user_id, symbol)) as cursor:
+            holding = await cursor.fetchone()
+
+        if holding:
+            old_shares, old_avg_price = holding
+            total_shares = old_shares + shares_possible
+            new_avg_price = ((old_shares * old_avg_price) + (shares_possible * price)) / total_shares
+            await db.execute(
+                "UPDATE holdings SET shares = ?, avg_price = ? WHERE user_id = ? AND symbol = ?",
+                (total_shares, new_avg_price, user_id, symbol)
+            )
+        else:
+            await db.execute(
+                "INSERT INTO holdings (user_id, symbol, shares, avg_price) VALUES (?, ?, ?, ?)",
+                (user_id, symbol, shares_possible, price)
+            )
+
+        await db.commit()
+        await ctx.send(f"✅ {ctx.author.mention} bought **{shares_possible} shares** of `{symbol}` ({company_name}) with ${actual_cost:,.2f}\n"
+                      f"💰 Price per share: ${price:,.2f} | Remaining cash: ${new_balance:,.2f}")
         
 @bot.command(name="leaderboard")
 async def leaderboard(ctx):
@@ -297,8 +444,6 @@ async def leaderboard(ctx):
 
         await ctx.send("\n".join(message))
         
-        
-        
 @bot.command(name="chart")
 async def chart(ctx):
     user_id = str(ctx.author.id)
@@ -325,10 +470,7 @@ async def chart(ctx):
     buf.seek(0)
     plt.close()
 
-    await ctx.send(file=discord.File(buf, filename="portfolio_chart.png"))
+    await ctx.send(file=discord.File(buf, "chart.png"))
 
 if __name__ == "__main__":
-    try:
-        bot.run(TOKEN)
-    except Exception as e:
-        print(f"Error: {e}")
+    bot.run(TOKEN)
