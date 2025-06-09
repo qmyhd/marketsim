@@ -18,7 +18,7 @@ primary_region = "iad"  # Washington D.C. region
 [[vm]]
   cpu_kind = "shared"
   cpus = 1
-  memory_mb = 512
+  memory_mb = 256
 
 # Optional: Add health check if you modify bot to include basic HTTP endpoint
 # [[services]]

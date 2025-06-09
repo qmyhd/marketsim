@@ -5,6 +5,7 @@ import requests
 from datetime import datetime, date
 import json
 import os
+import time
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -14,25 +15,160 @@ load_dotenv()
 # Configuration
 # ──────────────────────────────────────────────────────────────
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
+FINNHUB_API_KEY_SECOND = os.getenv("FINNHUB_API_KEY_SECOND")
+FINNHUB_API_KEY_2 = os.getenv("FINNHUB_API_KEY_2")  # Alternative naming
 DB_NAME = "trading_game.db"
 APP_NAME = "Trading Dashboard"
 
 app = Flask(__name__)
 
+# Module-level price cache with timestamps (shared with bot)
+price_cache = {}
+CACHE_DURATION = 60  # seconds
+CACHE_TTL = 60  # seconds (for consistency with bot)
+rate_limit_until = 0  # timestamp until we should avoid API calls
+
 # ──────────────────────────────────────────────────────────────
 # Helper Functions
 # ──────────────────────────────────────────────────────────────
+def preload_price_cache():
+    """Load cached prices from the database into memory."""
+    global price_cache
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("SELECT symbol, price, last_updated FROM last_price")
+        rows = cursor.fetchall()
+        
+        for symbol, price, last_updated in rows:
+            # Convert SQLite timestamp to Unix timestamp
+            try:
+                # Parse the CURRENT_TIMESTAMP format from SQLite
+                dt = datetime.fromisoformat(last_updated.replace('Z', '+00:00'))
+                timestamp = dt.timestamp()
+                price_cache[symbol.upper()] = (price, timestamp)
+                print(f"Preloaded cached price for {symbol}: ${price:.2f}")
+            except Exception as e:
+                print(f"Error parsing timestamp for {symbol}: {e}")
+    except sqlite3.OperationalError:
+        # Table doesn't exist yet, that's okay
+        print("last_price table doesn't exist yet, skipping price cache preload")
+    finally:
+        conn.close()
+
+def get_last_price_from_db(symbol: str) -> float | None:
+    """Get last known price for symbol from database."""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("SELECT price FROM last_price WHERE symbol = ?", (symbol.upper(),))
+        result = cursor.fetchone()
+        if result:
+            return result[0]
+    except sqlite3.OperationalError:
+        # Table doesn't exist yet
+        pass
+    finally:
+        conn.close()
+    return None
+
 def get_price(symbol: str) -> float | None:
-    """Return live price from Finnhub or None on failure."""
-    url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
+    """Get stock price with caching and rate limit handling."""
+    global rate_limit_until
+    cache_key = symbol.upper()
+    current_time = time.time()
+    
+    # Check if we have a cached price that's still fresh
+    if cache_key in price_cache:
+        cached_price, cached_time = price_cache[cache_key]
+        if current_time - cached_time < CACHE_DURATION:
+            return cached_price
+    
+    # Check if we're in a rate limit period
+    if current_time < rate_limit_until:
+        # Return cached price if available during rate limit
+        if cache_key in price_cache:
+            cached_price, _ = price_cache[cache_key]
+            print(f"Rate limited, using cached price for {symbol}: ${cached_price:.2f}")
+            return cached_price
+        return None
+    
+    # Try primary API key first
+    api_key = FINNHUB_API_KEY
+    url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={api_key}"
+    
     try:
         response = requests.get(url, timeout=5)
-        if response.status_code == 200:
+        
+        if response.status_code == 429:
+            # Rate limited - set rate limit period and try secondary key
+            rate_limit_until = current_time + 60
+            print(f"Rate limited on primary key, trying secondary key for {symbol}")
+            
+            if FINNHUB_API_KEY_SECOND:
+                url_secondary = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY_SECOND}"
+                response_secondary = requests.get(url_secondary, timeout=5)
+                
+                if response_secondary.status_code == 200:
+                    data = response_secondary.json()
+                    price = data.get("c")
+                    if price and price > 0:
+                        # Cache the result
+                        price_cache[cache_key] = (price, current_time)
+                        return price
+                elif response_secondary.status_code == 429:
+                    print(f"Secondary key also rate limited for {symbol}")
+            
+            # Try alternative key if available
+            if FINNHUB_API_KEY_2:
+                url_alt = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY_2}"
+                response_alt = requests.get(url_alt, timeout=5)
+                
+                if response_alt.status_code == 200:
+                    data = response_alt.json()
+                    price = data.get("c")
+                    if price and price > 0:
+                        # Cache the result
+                        price_cache[cache_key] = (price, current_time)
+                        return price
+            
+            # If both keys are rate limited, return cached price if available
+            if cache_key in price_cache:
+                cached_price, _ = price_cache[cache_key]
+                print(f"Both keys rate limited, using cached price for {symbol}: ${cached_price:.2f}")
+                return cached_price
+            return None
+        
+        elif response.status_code == 200:
             data = response.json()
-            return data.get("c") or None
+            price = data.get("c")
+            if price and price > 0:
+                # Cache the result
+                price_cache[cache_key] = (price, current_time)
+                return price
+        
+        # API call failed, return cached price if available
+        if cache_key in price_cache:
+            cached_price, _ = price_cache[cache_key]
+            print(f"API call failed, using cached price for {symbol}: ${cached_price:.2f}")
+            return cached_price
+        return None
+        
     except Exception as e:
-        print(f"Error fetching price for {symbol}: {e}")
-    return None
+        print(f"Error fetching price for {symbol}: {e}")        # Return cached price if available
+        if cache_key in price_cache:
+            cached_price, _ = price_cache[cache_key]
+            return cached_price
+        
+        # Final fallback: query database for last known price
+        db_price = get_last_price_from_db(symbol)
+        if db_price:
+            print(f"Using database fallback price for {symbol}: ${db_price:.2f}")
+            return db_price
+        
+        return None
 
 def get_company_name(symbol: str) -> str | None:
     """Return company name from Finnhub or None on failure."""
@@ -62,7 +198,6 @@ def fetch_leaderboard():
     
     for user_id, cash, initial_value, username in users:
         name = username if username else f"User-{user_id[-4:]}"
-        
         # Get holdings
         cursor.execute("SELECT symbol, shares, avg_price FROM holdings WHERE user_id = ?", (user_id,))
         holdings = cursor.fetchall()
@@ -70,11 +205,16 @@ def fetch_leaderboard():
         # Calculate portfolio value
         holdings_value = 0
         total_holdings = len(holdings)
-        
         for symbol, shares, avg_price in holdings:
             price = get_price(symbol)
             if price:
                 holdings_value += price * shares
+            else:
+                # Fallback to database for last known price
+                db_price = get_last_price_from_db(symbol)
+                if db_price:
+                    print(f"Using database fallback for {symbol} in leaderboard: ${db_price:.2f}")
+                    holdings_value += db_price * shares
         
         total_value = cash + holdings_value
         roi = ((total_value - initial_value) / initial_value) * 100 if initial_value else 0
@@ -135,12 +275,18 @@ def fetch_user_portfolio(user_id: str):
     
     holdings = []
     holdings_value = 0
-    
     for symbol, shares, avg_price in holdings_rows:
         price = get_price(symbol)
         if not price:
-            # Use avg_price as fallback if live price fails
-            price = avg_price
+            # Try database fallback for last known price
+            db_price = get_last_price_from_db(symbol)
+            if db_price:
+                print(f"Using database fallback for {symbol} in user portfolio: ${db_price:.2f}")
+                price = db_price
+            else:
+                # Skip positions where we can't get any price to avoid incorrect P&L
+                print(f"Warning: Could not fetch price for {symbol}, skipping from portfolio calculation")
+                continue
             
         value = price * shares
         change = ((price - avg_price) / avg_price) * 100 if avg_price else 0
@@ -1234,6 +1380,10 @@ USER_HTML = """
 # ──────────────────────────────────────────────────────────────
 # Routes
 # ──────────────────────────────────────────────────────────────
+@app.route("/health")
+def health():
+    return "OK", 200
+
 @app.route("/")
 def index():
     leaderboard, summary = fetch_leaderboard()
@@ -1267,6 +1417,11 @@ def api_refresh():
 # ──────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     print(f"🚀 Starting {APP_NAME}")
+    
+    # Preload price cache from database
+    print("📈 Preloading price cache from database...")
+    preload_price_cache()
+    
     port = int(os.getenv("PORT", 8080))  # Use Fly.io's PORT or default to 8080
     print(f"📊 Dashboard will be available at: http://localhost:{port}")
     print("🎨 Now featuring Robinhood-style design!")

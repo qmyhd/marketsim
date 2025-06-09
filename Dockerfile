@@ -30,6 +30,5 @@ USER app
 # Expose port
 EXPOSE 8080
 
-# Default command - runs the web dashboard
-# For the Discord bot, you would deploy a separate app or use a worker process
-CMD ["python", "dashboard_robinhood.py"]
+# Default command - runs the web dashboard with gunicorn
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--timeout", "120", "dashboard_robinhood:app"]

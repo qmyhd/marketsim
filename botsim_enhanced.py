@@ -8,6 +8,7 @@ import matplotlib.dates as mdates
 import io
 from datetime import datetime, date
 import os
+import time
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -18,6 +19,8 @@ print("Starting bot script...")  # Add this to the top of the file
 
 TOKEN = os.getenv("TOKEN")
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
+FINNHUB_API_KEY_SECOND = os.getenv("FINNHUB_API_KEY_SECOND")
+FINNHUB_API_KEY_2 = os.getenv("FINNHUB_API_KEY_2")  # Alternative naming
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -25,15 +28,110 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 DB_NAME = "trading_game.db"
 
-async def get_price(symbol):
-    url = f"https://finnhub.io/api/v1/quote?symbol={symbol.upper()}&token={FINNHUB_API_KEY}"
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as resp:
-            data = await resp.json()
-            return data.get("c")  # current price
+# Module-level price cache with timestamps
+price_cache: dict[str, tuple[float, float]] = {}  # {symbol: (price, timestamp)}
+CACHE_TTL = 60  # seconds
+CACHE_DURATION = 60  # seconds
+backoff_until = 0.0  # timestamp until we should avoid API calls
+rate_limit_until = 0.0  # timestamp until we should avoid API calls
 
-async def get_company_name(symbol):
-    """Get company name from Finnhub API"""
+async def get_price(symbol: str):
+    """Get stock price with caching and rate limit handling."""
+    global backoff_until, rate_limit_until
+    cache_key = symbol.upper()
+    current_time = time.time()
+    
+    # Return cached price if it's newer than CACHE_TTL
+    if cache_key in price_cache:
+        cached_price, cached_time = price_cache[cache_key]
+        if current_time - cached_time < CACHE_TTL:
+            return cached_price
+    
+    # Check if we're in a backoff/rate limit period
+    if current_time < max(backoff_until, rate_limit_until):
+        # Return cached price if available during rate limit
+        if cache_key in price_cache:
+            cached_price, _ = price_cache[cache_key]
+            print(f"Rate limited, using cached price for {symbol}: ${cached_price:.2f}")
+            return cached_price
+        return None
+    
+    # Fetch from Finnhub using primary key
+    api_key = FINNHUB_API_KEY
+    url = f"https://finnhub.io/api/v1/quote?symbol={symbol.upper()}&token={api_key}"
+    
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(url) as resp:
+                if resp.status == 429:
+                    # On HTTP 429, set backoff and retry once with secondary key
+                    backoff_until = current_time + 60
+                    rate_limit_until = current_time + 60
+                    print(f"Rate limited on primary key, trying secondary key for {symbol}")
+                    
+                    # Try with secondary key (FINNHUB_API_KEY_2 or FINNHUB_API_KEY_SECOND)
+                    secondary_key = FINNHUB_API_KEY_2 or FINNHUB_API_KEY_SECOND
+                    if secondary_key:
+                        url_secondary = f"https://finnhub.io/api/v1/quote?symbol={symbol.upper()}&token={secondary_key}"
+                        async with session.get(url_secondary) as resp_secondary:
+                            if resp_secondary.status == 200:
+                                data = await resp_secondary.json()
+                                price = data.get("c")
+                                if price and price > 0:
+                                    # Save successful result to cache
+                                    price_cache[cache_key] = (price, current_time)
+                                    # Save to database
+                                    async with aiosqlite.connect(DB_NAME) as db:
+                                        await db.execute(
+                                            "INSERT OR REPLACE INTO last_price (symbol, price, last_updated) VALUES (?, ?, CURRENT_TIMESTAMP)",
+                                            (symbol.upper(), price)
+                                        )
+                                        await db.commit()
+                                    return price
+                            elif resp_secondary.status == 429:
+                                print(f"Secondary key also rate limited for {symbol}")
+                                # When 429 occurs, set backoff_until to throttle
+                                backoff_until = current_time + 60
+                    
+                    # Both keys rate limited, return last cached price if available
+                    if cache_key in price_cache:
+                        cached_price, _ = price_cache[cache_key]
+                        print(f"Both keys rate limited, using cached price for {symbol}: ${cached_price:.2f}")
+                        return cached_price
+                    return None
+                
+                elif resp.status == 200:
+                    data = await resp.json()
+                    price = data.get("c")
+                    if price and price > 0:
+                        # Save successful result to cache
+                        price_cache[cache_key] = (price, current_time)
+                        # Save to database
+                        async with aiosqlite.connect(DB_NAME) as db:
+                            await db.execute(
+                                "INSERT OR REPLACE INTO last_price (symbol, price, last_updated) VALUES (?, ?, CURRENT_TIMESTAMP)",
+                                (symbol.upper(), price)
+                            )
+                            await db.commit()
+                        return price
+                
+                # API call failed, return last cached price if available
+                if cache_key in price_cache:
+                    cached_price, _ = price_cache[cache_key]
+                    print(f"API call failed, using cached price for {symbol}: ${cached_price:.2f}")
+                    return cached_price
+                return None
+                
+        except Exception as e:
+            print(f"Error fetching price for {symbol}: {e}")
+            # On failure, return last cached price if available
+            if cache_key in price_cache:
+                cached_price, _ = price_cache[cache_key]
+                return cached_price
+            return None
+
+async def get_company_name(symbol: str) -> str:
+    """Get company name from Finnhub API."""
     url = f"https://finnhub.io/api/v1/stock/profile2?symbol={symbol.upper()}&token={FINNHUB_API_KEY}"
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as resp:
@@ -41,6 +139,7 @@ async def get_company_name(symbol):
             return data.get("name", symbol.upper())
         
 async def daily_update():
+    """Send daily portfolio updates to the configured Discord channel."""
     # Get Discord channel ID from environment variable
     channel_id = os.getenv("DISCORD_CHANNEL_ID")
     if not channel_id:
@@ -64,7 +163,9 @@ async def daily_update():
             for symbol, shares in holdings:
                 price = await get_price(symbol)
                 if price:
-                    total_value += shares * price            # Update last_value
+                    total_value += shares * price
+            
+            # Update last_value
             await db.execute("UPDATE users SET last_value = ? WHERE user_id = ?", (total_value, user_id))
             today = date.today().isoformat()
             await db.execute(
@@ -86,6 +187,24 @@ async def daily_update():
 
         await db.commit()
 
+async def preload_price_cache():
+    """Load cached prices from the database into memory."""
+    global price_cache
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT symbol, price, last_updated FROM last_price") as cursor:
+            rows = await cursor.fetchall()
+        
+        for symbol, price, last_updated in rows:
+            # Convert SQLite timestamp to Unix timestamp
+            try:
+                # Parse the CURRENT_TIMESTAMP format from SQLite
+                dt = datetime.fromisoformat(last_updated.replace('Z', '+00:00'))
+                timestamp = dt.timestamp()
+                price_cache[symbol.upper()] = (price, timestamp)
+                print(f"Preloaded cached price for {symbol}: ${price:.2f}")
+            except Exception as e:
+                print(f"Error parsing timestamp for {symbol}: {e}")
+
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
@@ -106,6 +225,7 @@ async def on_ready():
                 symbol TEXT,
                 shares INTEGER,
                 avg_price REAL,
+                last_price REAL,
                 PRIMARY KEY (user_id, symbol)
             )
         ''')
@@ -117,7 +237,17 @@ async def on_ready():
                 PRIMARY KEY (user_id, date)
             )
         ''')
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS last_price (
+                symbol TEXT PRIMARY KEY,
+                price REAL,
+                last_updated TEXT
+            )
+        ''')
         await db.commit()
+
+    # Preload price cache from database
+    await preload_price_cache()
 
     if not scheduler.running:
         scheduler.start()
@@ -247,7 +377,9 @@ async def portfolio(ctx):
             holdings_lines.append(
                 f"`{symbol}` ({company_name[:20]}{'...' if len(company_name) > 20 else ''})\n"
                 f"  {shares}@${avg_price:.2f}→${price:.2f} ${position_value:,.0f} {pnl_symbol}${abs(unrealized):,.0f}"
-            )        # Summary
+            )
+        
+        # Summary
         holdings_value = total_value - cash
         
         # Get user's initial value for ROI calculation

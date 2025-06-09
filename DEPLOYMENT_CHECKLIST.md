@@ -56,10 +56,18 @@ git checkout fly.toml
 # Web dashboard
 flyctl -a market-sim-web secrets set FINNHUB_API_KEY=your_finnhub_api_key
 
+# Optional: Multiple API keys for rate limit fallback
+flyctl -a market-sim-web secrets set FINNHUB_API_KEY_SECOND=your_secondary_key
+flyctl -a market-sim-web secrets set FINNHUB_API_KEY_2=your_alternate_key
+
 # Discord bot
 flyctl -a market-sim-bot secrets set TOKEN=your_discord_bot_token
 flyctl -a market-sim-bot secrets set FINNHUB_API_KEY=your_finnhub_api_key
 flyctl -a market-sim-bot secrets set DISCORD_CHANNEL_ID=your_discord_channel_id
+
+# Optional: Multiple API keys for bot rate limit fallback
+flyctl -a market-sim-bot secrets set FINNHUB_API_KEY_SECOND=your_secondary_key
+flyctl -a market-sim-bot secrets set FINNHUB_API_KEY_2=your_alternate_key
 ```
 
 ### 6. Verify Deployments
@@ -77,6 +85,7 @@ flyctl -a market-sim-bot logs
 
 - [ ] Fly CLI installed and authenticated
 - [ ] Environment variables ready (TOKEN, FINNHUB_API_KEY, DISCORD_CHANNEL_ID)
+- [ ] Multiple API keys configured for rate limit handling (optional but recommended)
 - [ ] Git repository committed and pushed
 - [ ] Tested locally with `python start_dashboard.py` and `python start_bot.py`
 
@@ -86,6 +95,16 @@ flyctl -a market-sim-bot logs
 - [ ] Discord bot online and responding to commands
 - [ ] Database working (test with `!join` command)
 - [ ] Scheduled tasks running (check daily updates)
+- [ ] **Scale to zero when not in use** to minimize costs:
+  ```powershell
+  flyctl -a market-sim-web scale count 0
+  flyctl -a market-sim-bot scale count 0
+  ```
+- [ ] **Scale back up when needed**:
+  ```powershell
+  flyctl -a market-sim-web scale count 1
+  flyctl -a market-sim-bot scale count 1
+  ```
 
 ## 📝 Notes
 
