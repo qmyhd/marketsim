@@ -276,6 +276,9 @@ Create a `.env` file (you can copy from `.env.example`) with:
 TOKEN=your_discord_bot_token
 FINNHUB_API_KEY=your_finnhub_api_key
 DISCORD_CHANNEL_ID=your_discord_channel_id
+MIN_REQUEST_INTERVAL=2  # min seconds between API calls
+PRICE_CACHE_TTL=14400  # price cache duration in seconds
+COMPANY_CACHE_TTL=86400  # company name cache duration
 ```
 
 **How to Obtain Required Keys:**
