@@ -23,11 +23,15 @@ app = Flask(__name__, template_folder="templates")
 
 # Module-level price cache with timestamps (shared with bot)
 price_cache = {}
-CACHE_DURATION = 60  # seconds
-CACHE_TTL = 60  # seconds (for consistency with bot)
+# Cache time-to-live in seconds (override with PRICE_CACHE_TTL env var)
+CACHE_DURATION = int(os.getenv("PRICE_CACHE_TTL", "14400"))
+CACHE_TTL = CACHE_DURATION  # keep in sync with bot
 rate_limit_until = 0  # timestamp until we should avoid API calls
 last_request_time = 0  # throttle API requests
+# Minimum seconds between API calls (shared with bot)
 MIN_REQUEST_INTERVAL = float(os.getenv("MIN_REQUEST_INTERVAL", 2))
+company_name_cache = {}
+COMPANY_CACHE_TTL = int(os.getenv("COMPANY_CACHE_TTL", 86400))
 
 # Cached leaderboard data to minimize API usage
 dashboard_data = {"leaderboard": None, "summary": None, "timestamp": 0}
@@ -234,17 +238,30 @@ def get_price(symbol: str) -> float | None:
         return None
 
 def get_company_name(symbol: str) -> str | None:
-    """Return company name from Finnhub or None on failure."""
-    url = f"https://finnhub.io/api/v1/stock/profile2?symbol={symbol}&token={FINNHUB_API_KEY}"
+    """Return company name with caching."""
+    key = symbol.upper()
+    current_time = time.time()
+
+    if key in company_name_cache:
+        name, ts = company_name_cache[key]
+        if current_time - ts < COMPANY_CACHE_TTL:
+            return name
+
+    url = f"https://finnhub.io/api/v1/stock/profile2?symbol={key}&token={FINNHUB_API_KEY}"
     global last_request_time
     try:
         response = requests.get(url, timeout=5)
         last_request_time = time.time()
         if response.status_code == 200:
             data = response.json()
-            return data.get("name", None)
+            name = data.get("name", key)
+            company_name_cache[key] = (name, current_time)
+            return name
     except Exception as e:
         print(f"Error fetching company name for {symbol}: {e}")
+
+    if key in company_name_cache:
+        return company_name_cache[key][0]
     return None
 
 def fetch_leaderboard():

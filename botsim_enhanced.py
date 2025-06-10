@@ -30,22 +30,41 @@ DB_NAME = "trading_game.db"
 
 # Module-level price cache with timestamps
 price_cache: dict[str, tuple[float, float]] = {}  # {symbol: (price, timestamp)}
-CACHE_TTL = 60  # seconds
-CACHE_DURATION = 60  # seconds
+# Cache time-to-live in seconds (override with PRICE_CACHE_TTL env var)
+# Default is 4 hours to keep API usage minimal on Fly.io
+CACHE_TTL = int(os.getenv("PRICE_CACHE_TTL", "14400"))
+CACHE_DURATION = CACHE_TTL
 backoff_until = 0.0  # timestamp until we should avoid API calls
 rate_limit_until = 0.0  # timestamp until we should avoid API calls
+# Minimal interval between API requests (to reduce Fly.io usage)
+MIN_REQUEST_INTERVAL = float(os.getenv("MIN_REQUEST_INTERVAL", "2"))
+last_request_time = 0.0
+
+# Company name cache to avoid repeated API calls
+company_name_cache: dict[str, tuple[str, float]] = {}
+# Default TTL is one day since company names rarely change
+COMPANY_CACHE_TTL = int(os.getenv("COMPANY_CACHE_TTL", "86400"))
 
 async def get_price(symbol: str):
     """Get stock price with caching and rate limit handling."""
-    global backoff_until, rate_limit_until
+    global backoff_until, rate_limit_until, last_request_time
     cache_key = symbol.upper()
     current_time = time.time()
-    
+
     # Return cached price if it's newer than CACHE_TTL
     if cache_key in price_cache:
         cached_price, cached_time = price_cache[cache_key]
         if current_time - cached_time < CACHE_TTL:
             return cached_price
+
+    # Throttle API usage
+    if current_time - last_request_time < MIN_REQUEST_INTERVAL:
+        if cache_key in price_cache:
+            return price_cache[cache_key][0]
+        db_price = await get_last_price_from_db(symbol)
+        if db_price is not None:
+            return db_price
+        return None
     
     # Check if we're in a backoff/rate limit period
     if current_time < max(backoff_until, rate_limit_until):
@@ -63,6 +82,7 @@ async def get_price(symbol: str):
     async with aiohttp.ClientSession() as session:
         try:
             async with session.get(url) as resp:
+                last_request_time = time.time()
                 if resp.status == 429:
                     # On HTTP 429, set backoff and retry once with secondary key
                     backoff_until = current_time + 60
@@ -74,6 +94,7 @@ async def get_price(symbol: str):
                     if secondary_key:
                         url_secondary = f"https://finnhub.io/api/v1/quote?symbol={symbol.upper()}&token={secondary_key}"
                         async with session.get(url_secondary) as resp_secondary:
+                            last_request_time = time.time()
                             if resp_secondary.status == 200:
                                 data = await resp_secondary.json()
                                 price = data.get("c")
@@ -114,29 +135,59 @@ async def get_price(symbol: str):
                             )
                             await db.commit()
                         return price
-                
-                # API call failed, return last cached price if available
+                elif resp.status >= 500:
+                    backoff_until = current_time + 60
+
+                # API call failed, return cached or stored price if available
                 if cache_key in price_cache:
                     cached_price, _ = price_cache[cache_key]
                     print(f"API call failed, using cached price for {symbol}: ${cached_price:.2f}")
                     return cached_price
+
+                db_price = await get_last_price_from_db(symbol)
+                if db_price is not None:
+                    return db_price
                 return None
-                
+
         except Exception as e:
             print(f"Error fetching price for {symbol}: {e}")
+            backoff_until = current_time + 60
             # On failure, return last cached price if available
             if cache_key in price_cache:
                 cached_price, _ = price_cache[cache_key]
                 return cached_price
+            db_price = await get_last_price_from_db(symbol)
+            if db_price is not None:
+                return db_price
             return None
 
 async def get_company_name(symbol: str) -> str:
-    """Get company name from Finnhub API."""
-    url = f"https://finnhub.io/api/v1/stock/profile2?symbol={symbol.upper()}&token={FINNHUB_API_KEY}"
+    """Get company name from Finnhub API with caching."""
+    cache_key = symbol.upper()
+    current_time = time.time()
+
+    # Serve from cache if not expired
+    if cache_key in company_name_cache:
+        name, ts = company_name_cache[cache_key]
+        if current_time - ts < COMPANY_CACHE_TTL:
+            return name
+
+    url = f"https://finnhub.io/api/v1/stock/profile2?symbol={cache_key}&token={FINNHUB_API_KEY}"
     async with aiohttp.ClientSession() as session:
-        async with session.get(url) as resp:
-            data = await resp.json()
-            return data.get("name", symbol.upper())
+        try:
+            async with session.get(url) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    name = data.get("name", cache_key)
+                    company_name_cache[cache_key] = (name, current_time)
+                    return name
+        except Exception as exc:
+            print(f"Error fetching company name for {symbol}: {exc}")
+
+    # Fallback to cached name or the symbol itself
+    if cache_key in company_name_cache:
+        return company_name_cache[cache_key][0]
+    return cache_key
         
 async def daily_update():
     """Send daily portfolio updates to the configured Discord channel."""
@@ -204,6 +255,17 @@ async def preload_price_cache():
                 print(f"Preloaded cached price for {symbol}: ${price:.2f}")
             except Exception as e:
                 print(f"Error parsing timestamp for {symbol}: {e}")
+
+async def get_last_price_from_db(symbol: str) -> float | None:
+    """Retrieve last known price from the database."""
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute(
+            "SELECT price FROM last_price WHERE symbol = ?", (symbol.upper(),)
+        ) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                return row[0]
+    return None
 
 @bot.event
 async def on_ready():
