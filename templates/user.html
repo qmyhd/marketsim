@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ user.name }} - Portfolio | {{ app_name }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Same styles as INDEX_HTML for consistency */
+        :root {
+            --rh-black: #0B0E11;
+            --rh-dark: #1A1E23;
+            --rh-medium: #242932;
+            --rh-light: #2F343D;
+            --rh-border: #3A404A;
+            --rh-white: #FFFFFF;
+            --rh-text-primary: #FFFFFF;
+            --rh-text-secondary: #9CA0A6;
+            --rh-text-muted: #6B7280;
+            --rh-green: #00C805;
+            --rh-red: #FF5A52;
+            --rh-blue: #5AC53B;
+            --rh-purple: #8B5CF6;
+            --rh-yellow: #F7931E;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--rh-black);
+            color: var(--rh-text-primary);
+            font-size: 14px;
+            line-height: 1.5;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        
+        .navbar {
+            background: var(--rh-dark);
+            border-bottom: 1px solid var(--rh-border);
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .nav-brand {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--rh-white);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .btn {
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            border: 1px solid transparent;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .btn-outline {
+            background: transparent;
+            color: var(--rh-text-secondary);
+            border-color: var(--rh-border);
+        }
+        
+        .btn-outline:hover {
+            background: var(--rh-medium);
+            color: var(--rh-white);
+            border-color: var(--rh-light);
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem 1rem;
+        }
+        
+        .grid {
+            display: grid;
+            gap: 1.5rem;
+        }
+        
+        .grid-4 {
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        }
+        
+        .grid-2 {
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+        }
+        
+        .card {
+            background: var(--rh-dark);
+            border: 1px solid var(--rh-border);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        
+        .card-header {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--rh-border);
+            background: var(--rh-medium);
+        }
+        
+        .card-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--rh-white);
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .card-body {
+            padding: 1.5rem;
+        }
+        
+        .metric-card {
+            text-align: center;
+            background: var(--rh-dark);
+            border: 1px solid var(--rh-border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            transition: all 0.2s ease;
+        }
+        
+        .metric-card:hover {
+            border-color: var(--rh-light);
+            transform: translateY(-2px);
+        }
+        
+        .metric-icon {
+            font-size: 2rem;
+            margin-bottom: 0.75rem;
+            opacity: 0.8;
+        }
+        
+        .metric-label {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--rh-text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+        }
+        
+        .metric-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin: 0;
+        }
+        
+        .table-container {
+            overflow-x: auto;
+            border-radius: 8px;
+            border: 1px solid var(--rh-border);
+        }
+        
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--rh-dark);
+        }
+        
+        .table th {
+            background: var(--rh-medium);
+            color: var(--rh-text-secondary);
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 1rem 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--rh-border);
+        }
+        
+        .table td {
+            padding: 1rem 0.75rem;
+            border-bottom: 1px solid var(--rh-border);
+            vertical-align: middle;
+        }
+        
+        .table tr:hover {
+            background: var(--rh-medium);
+        }
+        
+        .text-green {
+            color: var(--rh-green);
+            font-weight: 600;
+        }
+        
+        .text-red {
+            color: var(--rh-red);
+            font-weight: 600;
+        }
+        
+        .text-blue {
+            color: var(--rh-blue);
+        }
+        
+        .text-yellow {
+            color: var(--rh-yellow);
+        }
+        
+        .text-purple {
+            color: var(--rh-purple);
+        }
+        
+        .text-muted {
+            color: var(--rh-text-muted);
+            font-size: 13px;
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 300px;
+            background: var(--rh-medium);
+            border-radius: 8px;
+            padding: 1rem;
+        }
+        
+        .page-title {
+            text-align: center;
+            margin-bottom: 2rem;
+            color: var(--rh-white);
+            font-size: 1.75rem;
+            font-weight: 700;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+            
+            .metric-card {
+                padding: 1rem;
+            }
+            
+            .metric-value {
+                font-size: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="/" class="nav-brand">
+                <i class="fas fa-chart-line"></i>
+                {{ app_name }}
+            </a>
+            <div class="nav-actions">
+                <a href="/" class="btn btn-outline">
+                    <i class="fas fa-arrow-left"></i>
+                    Back to Leaderboard
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <!-- User Header -->
+        <h1 class="page-title">
+            <i class="fas fa-user-circle"></i>
+            {{ user.name }}'s Portfolio
+        </h1>
+
+        <!-- Portfolio Summary Cards -->
+        <div class="grid grid-4" style="margin-bottom: 2rem;">
+            <div class="metric-card">
+                <div class="metric-icon text-green">
+                    <i class="fas fa-wallet"></i>
+                </div>
+                <div class="metric-label">Cash</div>
+                <div class="metric-value text-green">${{ "{:,.0f}".format(user.cash) }}</div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-icon text-blue">
+                    <i class="fas fa-chart-pie"></i>
+                </div>
+                <div class="metric-label">Holdings Value</div>
+                <div class="metric-value text-blue">${{ "{:,.0f}".format(user.holdings_value) }}</div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-icon text-purple">
+                    <i class="fas fa-money-bill"></i>
+                </div>
+                <div class="metric-label">Total Value</div>
+                <div class="metric-value text-purple">${{ "{:,.0f}".format(user.total_value) }}</div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-icon text-yellow">
+                    <i class="fas fa-percentage"></i>
+                </div>
+                <div class="metric-label">ROI</div>
+                <div class="metric-value {% if user.roi >= 0 %}text-green{% else %}text-red{% endif %}">
+                    {{ "{:+.1f}".format(user.roi) }}%
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="grid grid-2" style="margin-bottom: 2rem;">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        <i class="fas fa-chart-pie"></i>
+                        Portfolio Allocation
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="pieChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">
+                        <i class="fas fa-chart-line"></i>
+                        Performance Over Time
+                    </h3>
+                </div>
+                <div class="card-body">
+                    <div class="chart-container">
+                        <canvas id="lineChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Holdings Table -->
+        {% if user.holdings %}
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">
+                    <i class="fas fa-list"></i>
+                    Holdings Details
+                </h3>
+            </div>
+            <div class="card-body" style="padding: 0;">
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th><i class="fas fa-tag"></i> Stock</th>
+                                <th><i class="fas fa-layer-group"></i> Shares</th>
+                                <th><i class="fas fa-dollar-sign"></i> Avg Cost</th>
+                                <th><i class="fas fa-chart-line"></i> Current Price</th>
+                                <th><i class="fas fa-money-bill"></i> Position Value</th>
+                                <th><i class="fas fa-percentage"></i> Price Change</th>
+                                <th><i class="fas fa-calculator"></i> Unrealized P&L</th>
+                                <th><i class="fas fa-chart-pie"></i> % of Portfolio</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for h in user.holdings %}
+                            <tr>
+                                <td>
+                                    <div>
+                                        <div style="font-weight: 600;">{{ h.symbol }}</div>
+                                        <div class="text-muted">{{ h.company_name }}</div>
+                                    </div>
+                                </td>
+                                <td>{{ "{:,.0f}".format(h.shares) }}</td>
+                                <td>${{ "{:.2f}".format(h.avg_price) }}</td>
+                                <td>${{ "{:.2f}".format(h.price) }}</td>
+                                <td style="font-weight: 700;">${{ "{:,.0f}".format(h.value) }}</td>
+                                <td class="{% if h.change >= 0 %}text-green{% else %}text-red{% endif %}">
+                                    {{ "{:+.1f}".format(h.change) }}%
+                                </td>
+                                <td class="{% if h.unrealized_pnl >= 0 %}text-green{% else %}text-red{% endif %}">
+                                    ${{ "{:+,.0f}".format(h.unrealized_pnl) }}
+                                </td>
+                                <td>{{ "{:.1f}".format(h.portfolio_percent) }}%</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="card">
+            <div class="card-body" style="text-align: center; padding: 3rem;">
+                <div style="font-size: 3rem; color: var(--rh-text-muted); margin-bottom: 1rem;">
+                    <i class="fas fa-chart-pie"></i>
+                </div>
+                <h3 style="color: var(--rh-text-secondary); margin-bottom: 0.5rem;">No Holdings Yet</h3>
+                <p class="text-muted">This portfolio consists entirely of cash.</p>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        // Chart.js configuration for consistent dark theme
+        Chart.defaults.color = '#9CA0A6';
+        Chart.defaults.borderColor = '#3A404A';
+        Chart.defaults.backgroundColor = '#242932';
+
+        // Pie Chart for Portfolio Allocation
+        {% if user.pie_labels|length > 0 %}
+        const pieCtx = document.getElementById('pieChart').getContext('2d');
+        new Chart(pieCtx, {
+            type: 'doughnut',
+            data: {
+                labels: {{ user.pie_labels|tojson }},
+                datasets: [{
+                    data: {{ user.pie_values|tojson }},
+                    backgroundColor: [
+                        '#00C805', '#FF5A52', '#5AC53B', '#8B5CF6', 
+                        '#F7931E', '#06B6D4', '#EF4444', '#10B981',
+                        '#F59E0B', '#8B5CF6'
+                    ],
+                    borderWidth: 2,
+                    borderColor: '#1A1E23'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { 
+                        position: 'right',
+                        labels: { 
+                            color: '#9CA0A6',
+                            usePointStyle: true,
+                            padding: 20
+                        }
+                    }
+                }
+            }
+        });
+        {% endif %}
+
+        // Line Chart for Historical Performance
+        {% if user.history_dates|length > 0 %}
+        const lineCtx = document.getElementById('lineChart').getContext('2d');
+        new Chart(lineCtx, {
+            type: 'line',
+            data: {
+                labels: {{ user.history_dates|tojson }},
+                datasets: [{
+                    label: 'Portfolio Value',
+                    data: {{ user.history_values|tojson }},
+                    borderColor: '#5AC53B',
+                    backgroundColor: 'rgba(90, 197, 59, 0.1)',
+                    fill: true,
+                    tension: 0.4,
+                    borderWidth: 3,
+                    pointBackgroundColor: '#5AC53B',
+                    pointBorderColor: '#1A1E23',
+                    pointBorderWidth: 2,
+                    pointRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        ticks: {
+                            color: '#9CA0A6',
+                            callback: function(value) {
+                                return '$' + value.toLocaleString();
+                            }
+                        },
+                        grid: { color: '#3A404A' }
+                    },
+                    x: {
+                        ticks: { color: '#9CA0A6' },
+                        grid: { color: '#3A404A' }
+                    }
+                },
+                plugins: {
+                    legend: { display: false }
+                }
+            }
+        });
+        {% endif %}
+    </script>
+</body>
+</html>

@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ app_name }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Robinhood-Inspired Dark Theme */
+        :root {
+            --rh-black: #0B0E11;
+            --rh-dark: #1A1E23;
+            --rh-medium: #242932;
+            --rh-light: #2F343D;
+            --rh-border: #3A404A;
+            --rh-white: #FFFFFF;
+            --rh-text-primary: #FFFFFF;
+            --rh-text-secondary: #9CA0A6;
+            --rh-text-muted: #6B7280;
+            --rh-green: #00C805;
+            --rh-red: #FF5A52;
+            --rh-blue: #5AC53B;
+            --rh-purple: #8B5CF6;
+            --rh-yellow: #F7931E;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--rh-black);
+            color: var(--rh-text-primary);
+            font-size: 14px;
+            line-height: 1.5;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        
+        /* Navigation */
+        .navbar {
+            background: var(--rh-dark);
+            border-bottom: 1px solid var(--rh-border);
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+        
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .nav-brand {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--rh-white);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .nav-brand:hover {
+            color: var(--rh-blue);
+        }
+        
+        .nav-actions {
+            display: flex;
+            gap: 0.75rem;
+        }
+        
+        /* Buttons */
+        .btn {
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            border: 1px solid transparent;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .btn-primary {
+            background: var(--rh-blue);
+            color: var(--rh-black);
+            border-color: var(--rh-blue);
+        }
+        
+        .btn-primary:hover {
+            background: #4AB02A;
+            transform: translateY(-1px);
+        }
+        
+        .btn-outline {
+            background: transparent;
+            color: var(--rh-text-secondary);
+            border-color: var(--rh-border);
+        }
+        
+        .btn-outline:hover {
+            background: var(--rh-medium);
+            color: var(--rh-white);
+            border-color: var(--rh-light);
+        }
+        
+        /* Container */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem 1rem;
+        }
+        
+        /* Grid */
+        .grid {
+            display: grid;
+            gap: 1.5rem;
+        }
+        
+        .grid-4 {
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        }
+        
+        .grid-2 {
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+        }
+        
+        /* Cards */
+        .card {
+            background: var(--rh-dark);
+            border: 1px solid var(--rh-border);
+            border-radius: 12px;
+            overflow: hidden;
+            transition: all 0.2s ease;
+        }
+        
+        .card:hover {
+            border-color: var(--rh-light);
+            transform: translateY(-2px);
+        }
+        
+        .card-header {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--rh-border);
+            background: var(--rh-medium);
+        }
+        
+        .card-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--rh-white);
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .card-body {
+            padding: 1.5rem;
+        }
+        
+        /* Metric Cards */
+        .metric-card {
+            text-align: center;
+            background: var(--rh-dark);
+            border: 1px solid var(--rh-border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            transition: all 0.2s ease;
+        }
+        
+        .metric-card:hover {
+            border-color: var(--rh-light);
+            transform: translateY(-2px);
+        }
+        
+        .metric-icon {
+            font-size: 2rem;
+            margin-bottom: 0.75rem;
+            opacity: 0.8;
+        }
+        
+        .metric-label {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--rh-text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+        }
+        
+        .metric-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin: 0;
+        }
+        
+        /* Table */
+        .table-container {
+            overflow-x: auto;
+            border-radius: 8px;
+            border: 1px solid var(--rh-border);
+        }
+        
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--rh-dark);
+        }
+        
+        .table th {
+            background: var(--rh-medium);
+            color: var(--rh-text-secondary);
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 1rem 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--rh-border);
+        }
+        
+        .table td {
+            padding: 1rem 0.75rem;
+            border-bottom: 1px solid var(--rh-border);
+            vertical-align: middle;
+        }
+        
+        .table tr:hover {
+            background: var(--rh-medium);
+        }
+        
+        .table tr:last-child td {
+            border-bottom: none;
+        }
+        
+        /* Colors */
+        .text-green {
+            color: var(--rh-green);
+            font-weight: 600;
+        }
+        
+        .text-red {
+            color: var(--rh-red);
+            font-weight: 600;
+        }
+        
+        .text-blue {
+            color: var(--rh-blue);
+        }
+        
+        .text-yellow {
+            color: var(--rh-yellow);
+        }
+        
+        .text-purple {
+            color: var(--rh-purple);
+        }
+        
+        .text-secondary {
+            color: var(--rh-text-secondary);
+        }
+        
+        .text-muted {
+            color: var(--rh-text-muted);
+            font-size: 13px;
+        }
+        
+        /* Badges */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .badge-gold {
+            background: linear-gradient(135deg, var(--rh-yellow), #E67E22);
+            color: var(--rh-black);
+        }
+        
+        .badge-silver {
+            background: var(--rh-text-secondary);
+            color: var(--rh-black);
+        }
+        
+        /* Charts */
+        .chart-container {
+            position: relative;
+            height: 300px;
+            background: var(--rh-medium);
+            border-radius: 8px;
+            padding: 1rem;
+        }
+        
+        /* Loading */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            color: var(--rh-text-secondary);
+            font-size: 14px;
+        }
+        
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--rh-border);
+            border-top: 2px solid var(--rh-blue);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+            
+            .metric-card {
+                padding: 1rem;
+            }
+            
+            .metric-value {
+                font-size: 1.5rem;
+            }
+            
+            .table th,
+            .table td {
+                padding: 0.75rem 0.5rem;
+                font-size: 13px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="/" class="nav-brand">
+                <i class="fas fa-chart-line"></i>
+                {{ app_name }}
+            </a>
+            <div class="nav-actions">
+                <button class="btn btn-primary" onclick="refreshData()">
+                    <i class="fas fa-sync-alt"></i>
+                    Refresh
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <!-- Market Summary -->
+        <div class="grid grid-4" style="margin-bottom: 2rem;">
+            <div class="metric-card">
+                <div class="metric-icon text-blue">
+                    <i class="fas fa-users"></i>
+                </div>
+                <div class="metric-label">Active Traders</div>
+                <div class="metric-value text-blue">{{ summary.total_users }}</div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-icon text-green">
+                    <i class="fas fa-dollar-sign"></i>
+                </div>
+                <div class="metric-label">Total AUM</div>
+                <div class="metric-value text-green">${{ "{:,.0f}".format(summary.total_aum) }}</div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-icon text-yellow">
+                    <i class="fas fa-chart-line"></i>
+                </div>
+                <div class="metric-label">Avg ROI</div>
+                <div class="metric-value {% if summary.avg_roi >= 0 %}text-green{% else %}text-red{% endif %}">
+                    {{ "{:+.1f}".format(summary.avg_roi) }}%
+                </div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-icon text-purple">
+                    <i class="fas fa-trophy"></i>
+                </div>
+                <div class="metric-label">Best Performer</div>
+                <div class="metric-value text-purple">{{ summary.best_performer }}</div>
+            </div>
+        </div>
+
+        <!-- Leaderboard -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">
+                    <i class="fas fa-trophy text-yellow"></i>
+                    Leaderboard
+                </h2>
+            </div>
+            <div class="card-body" style="padding: 0;">
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th><i class="fas fa-medal"></i> Rank</th>
+                                <th><i class="fas fa-user"></i> Trader</th>
+                                <th><i class="fas fa-wallet"></i> Cash</th>
+                                <th><i class="fas fa-chart-pie"></i> Holdings</th>
+                                <th><i class="fas fa-money-bill"></i> Total Value</th>
+                                <th><i class="fas fa-percentage"></i> ROI</th>
+                                <th><i class="fas fa-chart-line"></i> P&L</th>
+                                <th><i class="fas fa-eye"></i> Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for user in leaderboard %}
+                            <tr>
+                                <td>
+                                    {% if loop.index == 1 %}
+                                        <span class="badge badge-gold">
+                                            <i class="fas fa-crown"></i> {{ loop.index }}
+                                        </span>
+                                    {% elif loop.index <= 3 %}
+                                        <span class="badge badge-silver">{{ loop.index }}</span>
+                                    {% else %}
+                                        <span style="font-weight: 600;">{{ loop.index }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div>
+                                        <div style="font-weight: 600;">{{ user.name }}</div>
+                                        {% if user.total_holdings > 0 %}
+                                            <div class="text-muted">{{ user.total_holdings }} positions</div>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                                <td>${{ "{:,.0f}".format(user.cash) }}</td>
+                                <td>${{ "{:,.0f}".format(user.holdings_value) }}</td>
+                                <td style="font-weight: 700;">${{ "{:,.0f}".format(user.total_value) }}</td>
+                                <td class="{% if user.roi >= 0 %}text-green{% else %}text-red{% endif %}">
+                                    {{ "{:+.1f}".format(user.roi) }}%
+                                </td>
+                                <td class="{% if user.pnl >= 0 %}text-green{% else %}text-red{% endif %}">
+                                    ${{ "{:+,.0f}".format(user.pnl) }}
+                                </td>
+                                <td>
+                                    <a href="/user/{{ user.user_id }}" class="btn btn-outline">
+                                        <i class="fas fa-chart-area"></i>
+                                        View Portfolio
+                                    </a>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function refreshData() {
+            const spinner = document.querySelector('.spinner');
+            if (spinner) return; // Already refreshing
+            
+            const refreshBtn = document.querySelector('.btn-primary');
+            const originalContent = refreshBtn.innerHTML;
+            
+            refreshBtn.innerHTML = '<div class="spinner"></div> Refreshing...';
+            refreshBtn.disabled = true;
+            
+            setTimeout(() => {
+                location.reload();
+            }, 1000);
+        }
+    </script>
+</body>
+</html>
