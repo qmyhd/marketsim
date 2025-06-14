@@ -10,10 +10,10 @@ This project is configured for deployment on Fly.io with separate applications f
 - **Port**: 8080 internally, 80/443 externally
 - **Purpose**: Portfolio visualization and leaderboard
 
-### Discord Bot App (`market-sim-bot`) 
-- **Service**: Discord bot (botsim_enhanced.py)
+### Discord Bot App (`market-sim-bot`)
+- **Service**: Stateless Discord bot (`webhook_bot.py`)
 - **Type**: Background worker (no web interface)
-- **Purpose**: Trading commands and automated updates
+- **Purpose**: Runs one command then exits
 
 ## Environment Variables Required
 
@@ -22,14 +22,15 @@ Set these using `flyctl secrets set`:
 ```bash
 # For both apps
 flyctl secrets set FINNHUB_API_KEY=your_primary_finnhub_api_key
+flyctl secrets set DATABASE_URL=/data/trading_game.db
 
 # Optional: Secondary Finnhub API keys for rate limit fallback
 flyctl secrets set FINNHUB_API_KEY_SECOND=your_secondary_finnhub_api_key
 flyctl secrets set FINNHUB_API_KEY_2=your_alternate_finnhub_api_key
 
-# For bot app only  
-flyctl secrets set TOKEN=your_discord_bot_token
-flyctl secrets set DISCORD_CHANNEL_ID=your_discord_channel_id
+# For bot app only
+flyctl secrets set DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/123/abc
+flyctl secrets set BOT_COMMAND=daily_update
 ```
 
 ### API Key Strategy
@@ -63,6 +64,12 @@ flyctl auth login
 flyctl launch --name market-sim-web
 flyctl deploy
 
+# Create a shared volume for the database
+flyctl volumes create trading_data --size 1
+# (Optional) copy your existing `trading_game.db` into this volume
+# flyctl ssh console -a market-sim-web
+#   cp trading_game.db /data/trading_game.db
+
 # Create bot app (copy fly.toml and modify for bot)
 flyctl launch --name market-sim-bot --no-deploy
 # Edit fly.toml for bot configuration
@@ -79,9 +86,9 @@ flyctl -a market-sim-web secrets set FINNHUB_API_KEY_SECOND=your_secondary_key
 flyctl -a market-sim-web secrets set FINNHUB_API_KEY_2=your_alternate_key
 
 # Bot app - all environment variables
-flyctl -a market-sim-bot secrets set TOKEN=your_token
 flyctl -a market-sim-bot secrets set FINNHUB_API_KEY=your_primary_key
-flyctl -a market-sim-bot secrets set DISCORD_CHANNEL_ID=your_channel_id
+flyctl -a market-sim-bot secrets set DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/123/abc
+flyctl -a market-sim-bot secrets set BOT_COMMAND=daily_update
 
 # Optional fallback keys for bot
 flyctl -a market-sim-bot secrets set FINNHUB_API_KEY_SECOND=your_secondary_key
@@ -129,7 +136,9 @@ flyctl -a market-sim-bot scale count 1
 ## Database Deployment Notes
 
 - SQLite database will be created automatically on first run
-- Database persists in app's file system (ephemeral in Fly.io)
+- Create a shared volume so the database persists across deployments
+- Copy any existing `trading_game.db` file into this volume to retain
+  current holdings and prices
 - For production, consider using Fly.io Postgres for persistence:
 
 ```bash
@@ -217,7 +226,7 @@ To maximize API throughput with Finnhub free tier:
 - **App won't start**: Check environment variables are set with `flyctl -a app-name secrets list`
 - **Database errors**: Ensure database file permissions are correct
 - **Port binding**: Verify PORT environment variable and internal_port match
-- **Discord bot offline**: Check TOKEN and permissions
+ - **Discord bot offline**: Check webhook URL and permissions
 - **API rate limiting**: Ensure multiple FINNHUB_API_KEY variables are set
 - **High costs**: Scale unused apps to 0 instances
 - **Memory issues**: Apps optimized for 256MB, increase if needed

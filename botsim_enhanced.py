@@ -2,19 +2,18 @@ import discord
 from discord.ext import commands
 import aiosqlite
 import aiohttp
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import io
 from datetime import datetime, date
 import os
 import time
+import atexit
+import asyncio
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
-
-scheduler = AsyncIOScheduler()
 print("Starting bot script...")  # Add this to the top of the file
 
 TOKEN = os.getenv("TOKEN")
@@ -26,13 +25,13 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-DB_NAME = "trading_game.db"
+DB_NAME = os.getenv("DATABASE_URL", "/data/trading_game.db")
 
 # Module-level price cache with timestamps
 price_cache: dict[str, tuple[float, float]] = {}  # {symbol: (price, timestamp)}
 # Cache time-to-live in seconds (override with PRICE_CACHE_TTL env var)
-# Default is 4 hours to keep API usage minimal on Fly.io
-CACHE_TTL = int(os.getenv("PRICE_CACHE_TTL", "14400"))
+# Default is 24 hours to keep API usage minimal on Fly.io
+CACHE_TTL = int(os.getenv("PRICE_CACHE_TTL", "86400"))
 CACHE_DURATION = CACHE_TTL
 backoff_until = 0.0  # timestamp until we should avoid API calls
 rate_limit_until = 0.0  # timestamp until we should avoid API calls
@@ -44,6 +43,16 @@ last_request_time = 0.0
 company_name_cache: dict[str, tuple[str, float]] = {}
 # Default TTL is one day since company names rarely change
 COMPANY_CACHE_TTL = int(os.getenv("COMPANY_CACHE_TTL", "86400"))
+
+# Persist all cached prices to the database
+async def persist_price_cache() -> None:
+    async with aiosqlite.connect(DB_NAME) as db:
+        for symbol, (price, _) in price_cache.items():
+            await db.execute(
+                "INSERT OR REPLACE INTO last_price (symbol, price, last_updated) VALUES (?, ?, CURRENT_TIMESTAMP)",
+                (symbol, price),
+            )
+        await db.commit()
 
 async def get_price(symbol: str):
     """Get stock price with caching and rate limit handling."""
@@ -310,10 +319,6 @@ async def on_ready():
 
     # Preload price cache from database
     await preload_price_cache()
-
-    if not scheduler.running:
-        scheduler.start()
-        scheduler.add_job(daily_update, "cron", hour=18, minute=0)  # or test with minute="*" for now
 
 @bot.command(name="join")
 async def join(ctx):
@@ -667,4 +672,12 @@ async def chart(ctx):
     await ctx.send(file=discord.File(buf, "chart.png"))
 
 if __name__ == "__main__":
-    bot.run(TOKEN)
+    print("This module provides command implementations for the trading bot.")
+
+def _flush_cache_sync() -> None:
+    try:
+        asyncio.run(persist_price_cache())
+    except Exception:
+        pass
+
+atexit.register(_flush_cache_sync)

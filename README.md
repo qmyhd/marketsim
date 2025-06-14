@@ -92,7 +92,7 @@ python start_dashboard.py
 
 - **Live Data Integration**:
   - Real-time stock prices from Finnhub API
-  - Auto-refresh every 30 seconds
+  - Manual refresh button
   - Current market status indicators
 
 #### **Individual Portfolio Pages** (http://localhost:8080/user/{user_id})
@@ -126,9 +126,8 @@ python start_dashboard.py
 - Daily snapshots for performance charting
 
 #### **Automated Daily Updates**
-- Scheduled portfolio updates at 6 PM daily
-- Automatic total value calculations
-- Historical data preservation in database
+- Portfolio update command captures new values daily
+- Historical data preserved in the database
 - Maintains data integrity across market closures
 
 #### **Comprehensive P&L Calculations**
@@ -152,7 +151,6 @@ The heart of the trading simulation featuring:
 - **Discord command handlers**: All trading commands (`!buy`, `!sell`, `!portfolio`, etc.)
 - **Database operations**: User management, transaction processing, portfolio calculations
 - **Real-time market data**: Finnhub API integration for live stock prices
-- **Scheduled tasks**: Daily portfolio updates via APScheduler
 - **Error handling**: Comprehensive validation and user feedback
 
 #### **`dashboard_robinhood.py`** - Web Dashboard
@@ -207,14 +205,16 @@ Key packages include:
 - `aiosqlite` - Async SQLite operations
 - `flask` - Web dashboard backend
 - `aiohttp` - HTTP client for API calls
-- `apscheduler` - Task scheduling
 - `matplotlib` - Chart generation
 
 #### **`.env`** & **`.env.example`** - Environment Variables
 Critical configuration:
-- `TOKEN` - Discord bot authentication token
 - `FINNHUB_API_KEY` - Real-time market data access
-- `DISCORD_CHANNEL_ID` - Target channel for bot operations
+- `DISCORD_WEBHOOK_URL` - Discord webhook for sending bot messages
+- `BOT_COMMAND` - Command executed when the bot runs
+- `DATABASE_URL` - Path to SQLite file or Postgres connection URL
+- `FINNHUB_API_KEY_SECOND` and `FINNHUB_API_KEY_2` - Optional backup Finnhub keys
+- `ALPHA_VANTAGE_KEY` and `TIINGO_KEY` - Optional extra data providers
 
 ### Deployment Files
 
@@ -266,42 +266,37 @@ pip install -r requirements.txt
 - `aiosqlite` - Asynchronous SQLite database operations
 - `flask` - Web framework for the dashboard
 - `aiohttp` - HTTP client for API requests
-- `apscheduler` - Task scheduling for daily updates
 - `matplotlib` - Chart generation for portfolio visualizations
 - `python-dotenv` - Environment variable management
 
 ### 2. Environment Variables
 Create a `.env` file (you can copy from `.env.example`) with:
 ```env
-TOKEN=your_discord_bot_token
 FINNHUB_API_KEY=your_finnhub_api_key
-DISCORD_CHANNEL_ID=your_discord_channel_id
+FINNHUB_API_KEY_SECOND=your_secondary_key
+FINNHUB_API_KEY_2=your_alternate_key
+ALPHA_VANTAGE_KEY=your_alpha_vantage_key
+TIINGO_KEY=your_tiingo_key
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/123/abc
+BOT_COMMAND=daily_update  # command executed when the bot runs
 MIN_REQUEST_INTERVAL=2  # min seconds between API calls
-PRICE_CACHE_TTL=14400  # price cache duration in seconds
+PRICE_CACHE_TTL=86400  # price cache duration in seconds
 COMPANY_CACHE_TTL=86400  # company name cache duration
+DATABASE_URL=/data/trading_game.db  # SQLite path or Postgres URL
 ```
 
 **How to Obtain Required Keys:**
 
-#### Discord Bot Token
-1. Visit [Discord Developer Portal](https://discord.com/developers/applications)
-2. Create a new application
-3. Go to "Bot" section and create a bot
-4. Copy the token (keep this secret!)
-5. Enable necessary bot permissions:
-   - Send Messages
-   - Read Message History
-   - Use Slash Commands
+#### Discord Webhook URL
+1. In Discord, go to **Server Settings → Integrations → Webhooks**
+2. Create a new webhook and select the target channel
+3. Copy the webhook URL (keep this secret!)
 
 #### Finnhub API Key
 1. Sign up at [Finnhub.io](https://finnhub.io/)
 2. Get your free API key from the dashboard
 3. Free tier includes 60 API calls/minute (sufficient for most use cases)
 
-#### Discord Channel ID
-1. Enable Developer Mode in Discord (User Settings > Advanced)
-2. Right-click your target channel
-3. Select "Copy ID"
 
 ### 3. Database Initialization
 The bot automatically creates the SQLite database on first run:
@@ -310,22 +305,26 @@ The bot automatically creates the SQLite database on first run:
 # No manual setup required - schema is auto-generated
 ```
 
+### Using an Existing Database
+If you already have a `trading_game.db` from a previous deployment,
+copy it into the Fly.io volume before starting the apps. Both services
+read `DATABASE_URL` (defaults to `/data/trading_game.db`) so mounting
+the same volume keeps your holdings and price history intact.
+
 ### 4. Run the Bot
 ```bash
 # Easy way (recommended)
 python start_bot.py
 
 # Direct way
-python botsim_enhanced.py
+python webhook_bot.py
 ```
 
 **Bot Startup Process:**
 1. Loads environment variables from `.env`
-2. Connects to Discord API
-3. Initializes SQLite database (creates tables if needed)
-4. Sets up scheduled tasks for daily portfolio updates
-5. Registers command handlers
-6. Reports successful startup to console
+2. Initializes the SQLite database (creates tables if needed)
+3. Executes the command specified by `BOT_COMMAND`
+4. Flushes cached prices to the database before exiting
 
 ### 5. Run the Dashboard (Optional)
 ```bash
@@ -341,7 +340,7 @@ python dashboard_robinhood.py
 - Real-time leaderboard with sortable columns
 - Individual portfolio pages at `/user/{user_id}`
 - Responsive design that works on mobile devices
-- Auto-refresh functionality for live data updates
+- Manual refresh button for live data updates
 
 ### 6. First-Time Setup Verification
 ```bash
@@ -412,8 +411,7 @@ CREATE TABLE history (
 - P&L = (current_price - avg_price) × shares for each position
 
 #### **Daily Updates**
-- Scheduled task runs daily at 6 PM (APScheduler)
-- Updates `last_value` in users table
+- Daily command execution updates `last_value` in users table
 - Adds new records to history table
 - Preserves historical data for chart generation
 
@@ -425,7 +423,7 @@ CREATE TABLE history (
 - **Discord Bot**: Built on `discord.py` with async/await patterns
 - **Database Operations**: `aiosqlite` for non-blocking database access
 - **HTTP Requests**: `aiohttp` for concurrent API calls
-- **Task Scheduling**: `APScheduler` for background operations
+-- **Task Execution**: Lightweight stateless commands
 
 #### **Data Flow**
 ```
@@ -450,19 +448,6 @@ DEFAULT_STARTING_CASH = 1000000
 
 # Update existing users with new capital
 python update_capital.py
-```
-
-#### **Scheduled Task Timing**
-```python
-# Daily portfolio updates at 6 PM Eastern
-# Modify in botsim_enhanced.py
-scheduler.add_job(
-    daily_update,
-    'cron',
-    hour=18,  # 6 PM
-    minute=0,
-    timezone='US/Eastern'
-)
 ```
 
 #### **API Rate Limiting**
@@ -644,9 +629,9 @@ Refer to `DEPLOYMENT_CHECKLIST.md` for the complete step-by-step guide:
    flyctl -a market-sim-web secrets set FINNHUB_API_KEY=your_key
 
    # Bot service  
-   flyctl -a market-sim-bot secrets set TOKEN=your_token
-   flyctl -a market-sim-bot secrets set FINNHUB_API_KEY=your_key
-   flyctl -a market-sim-bot secrets set DISCORD_CHANNEL_ID=your_channel
+  flyctl -a market-sim-bot secrets set FINNHUB_API_KEY=your_key
+  flyctl -a market-sim-bot secrets set DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/123/abc
+  flyctl -a market-sim-bot secrets set BOT_COMMAND=daily_update
    ```
 
 ## 🎯 Usage Examples
@@ -683,7 +668,7 @@ Refer to `DEPLOYMENT_CHECKLIST.md` for the complete step-by-step guide:
 #### **Main Dashboard Features**
 - **URL**: http://localhost:8080 (local) or your-app.fly.dev (production)
 - **Leaderboard**: Click column headers to sort by different metrics
-- **Refresh**: Auto-refresh every 30 seconds or click refresh button
+- **Refresh**: Use the refresh button to update data on demand
 - **Portfolio Links**: Click "View Portfolio" for detailed user pages
 
 #### **Individual Portfolio Analysis**

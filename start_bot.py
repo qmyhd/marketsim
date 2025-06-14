@@ -13,7 +13,7 @@ def check_environment():
     print("🔍 Checking environment variables...")
     
     load_dotenv()
-    required_vars = ["TOKEN", "FINNHUB_API_KEY", "DISCORD_CHANNEL_ID"]
+    required_vars = ["FINNHUB_API_KEY", "DISCORD_WEBHOOK_URL", "BOT_COMMAND"]
     missing_vars = []
     
     for var in required_vars:
@@ -38,21 +38,17 @@ def main():
     if not check_environment():
         sys.exit(1)
     
-    print("\n🤖 Starting Discord bot...")
-    print("💡 Press Ctrl+C to stop the bot")
+    print("\n🤖 Running stateless bot command...")
     print("=" * 50)
-    
+
     try:
-        # Import and run the bot
-        print("🤖 Loading bot modules...")
-        import botsim_enhanced
-        # The bot will start automatically when the module is imported
-        
+        from webhook_bot import main as bot_main
+        import asyncio
+        asyncio.run(bot_main())
     except KeyboardInterrupt:
         print("\n👋 Bot stopped by user")
     except Exception as e:
-        print(f"\n❌ Error starting bot: {e}")
-        print("💡 Check your environment variables and internet connection")
+        print(f"\n❌ Error running bot command: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
