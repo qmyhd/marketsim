@@ -16,6 +16,10 @@ primary_region = "iad"  # Washington D.C. region
 [env]
   PORT = "8080"
 
+[[mounts]]
+  source = "trading_data"
+  destination = "/data"
+
 [[services]]
   internal_port = 8080
   protocol = "tcp"
@@ -46,6 +50,11 @@ primary_region = "iad"  # Washington D.C. region
     method = "get"
     path = "/health"
     protocol = "http"
+
+  [services.autoscale]
+    min_machines_running = 0
+    auto_stop_machines = "stop"
+    auto_start_machines = true
 
 [[vm]]
   cpu_kind = "shared"

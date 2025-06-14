@@ -36,7 +36,7 @@ def check_environment():
     print("\n🔍 Checking environment variables...")
     
     load_dotenv()
-    required_vars = ["TOKEN", "FINNHUB_API_KEY", "DISCORD_CHANNEL_ID"]
+    required_vars = ["FINNHUB_API_KEY", "DISCORD_WEBHOOK_URL", "BOT_COMMAND"]
     missing_vars = []
     
     for var in required_vars:

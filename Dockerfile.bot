@@ -28,4 +28,4 @@ RUN useradd --create-home --shell /bin/bash app && \
 USER app
 
 # Run the Discord bot
-CMD ["python", "botsim_enhanced.py"]
+CMD ["python", "webhook_bot.py"]

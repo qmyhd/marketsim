@@ -5,6 +5,7 @@ import requests
 from datetime import datetime, date
 import os
 import time
+import atexit
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -16,7 +17,7 @@ load_dotenv()
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 FINNHUB_API_KEY_SECOND = os.getenv("FINNHUB_API_KEY_SECOND")
 FINNHUB_API_KEY_2 = os.getenv("FINNHUB_API_KEY_2")  # Alternative naming
-DB_NAME = "trading_game.db"
+DB_NAME = os.getenv("DATABASE_URL", "/data/trading_game.db")
 APP_NAME = "Trading Dashboard"
 
 app = Flask(__name__, template_folder="templates")
@@ -24,7 +25,7 @@ app = Flask(__name__, template_folder="templates")
 # Module-level price cache with timestamps (shared with bot)
 price_cache = {}
 # Cache time-to-live in seconds (override with PRICE_CACHE_TTL env var)
-CACHE_DURATION = int(os.getenv("PRICE_CACHE_TTL", "14400"))
+CACHE_DURATION = int(os.getenv("PRICE_CACHE_TTL", "86400"))
 CACHE_TTL = CACHE_DURATION  # keep in sync with bot
 rate_limit_until = 0  # timestamp until we should avoid API calls
 last_request_time = 0  # throttle API requests
@@ -36,6 +37,24 @@ COMPANY_CACHE_TTL = int(os.getenv("COMPANY_CACHE_TTL", 86400))
 # Cached leaderboard data to minimize API usage
 dashboard_data = {"leaderboard": None, "summary": None, "timestamp": 0}
 DASHBOARD_CACHE_DURATION = int(os.getenv("DASHBOARD_CACHE_DURATION", 300))
+
+def flush_price_cache() -> None:
+    """Persist in-memory price cache to the database."""
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        for symbol, (price, _) in price_cache.items():
+            cursor.execute(
+                "INSERT OR REPLACE INTO last_price (symbol, price, last_updated) VALUES (?, ?, CURRENT_TIMESTAMP)",
+                (symbol.upper(), price),
+            )
+        conn.commit()
+        conn.close()
+        print("📝 Price cache flushed to database")
+    except Exception:
+        pass
+
+atexit.register(flush_price_cache)
 
 # ──────────────────────────────────────────────────────────────
 # Helper Functions

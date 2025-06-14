@@ -7,7 +7,7 @@ import sqlite3
 import os
 import shutil
 
-DB_NAME = "trading_game.db"
+DB_NAME = os.getenv("DATABASE_URL", "/data/trading_game.db")
 
 def fix_schema():
     print("🔧 Fixing database schema defaults...")

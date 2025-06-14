@@ -494,9 +494,9 @@
             refreshBtn.innerHTML = '<div class="spinner"></div> Refreshing...';
             refreshBtn.disabled = true;
             
-            setTimeout(() => {
+            fetch('/api/refresh').then(() => {
                 location.reload();
-            }, 1000);
+            });
         }
     </script>
 </body>

@@ -8,7 +8,7 @@ import sqlite3
 import os
 from datetime import date
 
-DB_NAME = "trading_game.db"
+DB_NAME = os.getenv("DATABASE_URL", "/data/trading_game.db")
 
 def update_starting_capital():
     print("🔧 Updating starting capital for existing users...")
