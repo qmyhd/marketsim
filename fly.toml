@@ -7,12 +7,6 @@ primary_region = "iad"  # Washington D.C. region
 [build]
   dockerfile = "Dockerfile"
 
-[build.args]              # ← add
-  TOKEN               = "${TOKEN}"
-  FINNHUB_API_KEY     = "${FINNHUB_API_KEY}"
-  DISCORD_CHANNEL_ID  = "${DISCORD_CHANNEL_ID}"
-  PRICE_CACHE_TTL     = "86400"
-
 [env]
   PORT = "8080"
 

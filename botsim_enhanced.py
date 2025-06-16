@@ -54,8 +54,185 @@ async def persist_price_cache() -> None:
             )
         await db.commit()
 
-async def get_price(symbol: str):
-    """Get stock price with caching and rate limit handling."""
+async def get_price_finnhub(symbol: str, api_key: str) -> float | None:
+    """Get price from Finnhub API with proper error handling."""
+    url = f"https://finnhub.io/api/v1/quote?symbol={symbol.upper()}&token={api_key}"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                # Check content type first to avoid JSON parsing errors
+                content_type = resp.headers.get('content-type', '').lower()
+                
+                if resp.status == 200:
+                    if 'application/json' in content_type:
+                        try:
+                            data = await resp.json()
+                            price = data.get("c")
+                            if price and price > 0:
+                                print(f"✅ Finnhub: Got price for {symbol}: ${price:.2f}")
+                                return price
+                        except (aiohttp.ContentTypeError, ValueError) as json_err:
+                            print(f"❌ Finnhub: JSON parsing error for {symbol}: {json_err}")
+                            text_response = await resp.text()
+                            print(f"❌ Finnhub: Response text: {text_response[:200]}")
+                            return None
+                    else:
+                        # Non-JSON response (possibly error message)
+                        text_response = await resp.text()
+                        print(f"❌ Finnhub: Non-JSON response for {symbol}: {text_response[:200]}")
+                        return None
+                elif resp.status == 429:
+                    print(f"⚠️ Finnhub: Rate limited for {symbol}")
+                    # Raise specific exception to trigger backoff
+                    raise aiohttp.ClientResponseError(
+                        request_info=resp.request_info,
+                        history=resp.history,
+                        status=429,
+                        message="Rate limited"
+                    )
+                else:
+                    text_response = await resp.text()
+                    print(f"❌ Finnhub: Status {resp.status} for {symbol}: {text_response[:200]}")
+                    return None
+    except aiohttp.ClientResponseError as e:
+        if e.status == 429:
+            print(f"⚠️ Finnhub: Rate limit hit for {symbol}")
+            raise  # Re-raise to trigger backoff logic
+        else:
+            print(f"❌ Finnhub HTTP error for {symbol}: {e}")
+            return None
+    except Exception as e:
+        print(f"❌ Finnhub error for {symbol}: {e}")
+        return None
+
+async def get_price_yfinance(symbol: str) -> float | None:
+    """Get price from Yahoo Finance API with proper error handling."""
+    url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={symbol}"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status == 200:
+                    content_type = resp.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        try:
+                            data = await resp.json()
+                            result = data.get("quoteResponse", {}).get("result", [])
+                            if result:
+                                price = result[0].get("regularMarketPrice")
+                                if price and price > 0:
+                                    print(f"✅ Yahoo Finance: Got price for {symbol}: ${price:.2f}")
+                                    return price
+                        except (aiohttp.ContentTypeError, ValueError) as json_err:
+                            print(f"❌ Yahoo Finance: JSON parsing error for {symbol}: {json_err}")
+                            return None
+                    else:
+                        text_response = await resp.text()
+                        print(f"❌ Yahoo Finance: Non-JSON response for {symbol}: {text_response[:200]}")
+                        return None
+                else:
+                    print(f"❌ Yahoo Finance: Status {resp.status} for {symbol}")
+                    return None
+    except Exception as e:
+        print(f"❌ Yahoo Finance error for {symbol}: {e}")
+        return None
+
+async def get_price_polygon(symbol: str) -> float | None:
+    """Get price from Polygon API with proper error handling."""
+    api_key = os.getenv("Polygon_API_KEY")
+    if not api_key:
+        return None
+    
+    url = f"https://api.polygon.io/v2/aggs/ticker/{symbol}/prev?apikey={api_key}"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status == 200:
+                    content_type = resp.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        try:
+                            data = await resp.json()
+                            results = data.get("results", [])
+                            if results:
+                                price = results[0].get("c")  # Close price
+                                if price and price > 0:
+                                    print(f"✅ Polygon: Got price for {symbol}: ${price:.2f}")
+                                    return price
+                        except (aiohttp.ContentTypeError, ValueError) as json_err:
+                            print(f"❌ Polygon: JSON parsing error for {symbol}: {json_err}")
+                            return None
+                    else:
+                        text_response = await resp.text()
+                        print(f"❌ Polygon: Non-JSON response for {symbol}: {text_response[:200]}")
+                        return None
+                else:
+                    print(f"❌ Polygon: Status {resp.status} for {symbol}")
+                    return None
+    except Exception as e:
+        print(f"❌ Polygon error for {symbol}: {e}")
+        return None
+
+async def get_price_alpaca(symbol: str) -> float | None:
+    """Get price from Alpaca API with proper error handling."""
+    api_key = os.getenv("ALPACA_API_KEY")
+    secret_key = os.getenv("ALPACA_SECRET_KEY")
+    endpoint = os.getenv("ALPACA_ENDPOINT", "https://paper-api.alpaca.markets/v2")
+    
+    if not api_key or not secret_key:
+        return None
+    
+    url = f"{endpoint}/stocks/{symbol}/quotes/latest"
+    headers = {
+        "APCA-API-KEY-ID": api_key,
+        "APCA-API-SECRET-KEY": secret_key
+    }
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status == 200:
+                    content_type = resp.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        try:
+                            data = await resp.json()
+                            quote = data.get("quote", {})
+                            bid = quote.get("bp", 0)
+                            ask = quote.get("ap", 0)
+                            if bid > 0 and ask > 0:
+                                price = (bid + ask) / 2  # Mid price
+                                print(f"✅ Alpaca: Got price for {symbol}: ${price:.2f}")
+                                return price
+                        except (aiohttp.ContentTypeError, ValueError) as json_err:
+                            print(f"❌ Alpaca: JSON parsing error for {symbol}: {json_err}")
+                            return None
+                    else:
+                        text_response = await resp.text()
+                        print(f"❌ Alpaca: Non-JSON response for {symbol}: {text_response[:200]}")
+                        return None
+                else:
+                    print(f"❌ Alpaca: Status {resp.status} for {symbol}")
+                    return None
+    except Exception as e:
+        print(f"❌ Alpaca error for {symbol}: {e}")
+        return None
+
+async def get_price(symbol: str) -> float | None:
+    """
+    Get stock price with comprehensive multi-provider fallback system:
+    1. Check cache first (if fresh within CACHE_TTL)
+    2. Try Finnhub primary key (if not in backoff period)
+    3. Try Yahoo Finance API
+    4. Try Polygon API (if API key available)
+    5. Try Alpaca API (if API keys available)
+    6. Fallback to cached price (any age)
+    7. Fallback to database price
+    
+    Features:
+    - Rate limit handling with 60-second backoff
+    - JSON parsing error protection
+    - Content-type validation
+    - Request throttling (MIN_REQUEST_INTERVAL)
+    - Comprehensive error logging
+    """
     global backoff_until, rate_limit_until, last_request_time
     cache_key = symbol.upper()
     current_time = time.time()
@@ -75,103 +252,104 @@ async def get_price(symbol: str):
             return db_price
         return None
     
-    # Check if we're in a backoff/rate limit period
+    # Check if we're in a backoff/rate limit period for Finnhub
     if current_time < max(backoff_until, rate_limit_until):
-        # Return cached price if available during rate limit
-        if cache_key in price_cache:
-            cached_price, _ = price_cache[cache_key]
-            print(f"Rate limited, using cached price for {symbol}: ${cached_price:.2f}")
-            return cached_price
-        return None
+        print(f"⏰ In backoff period, skipping Finnhub for {symbol}")
+        finnhub_available = False
+    else:
+        finnhub_available = True
+
+    # Update request time at the actual time of request
+    last_request_time = time.time()
     
-    # Fetch from Finnhub using primary key
-    api_key = FINNHUB_API_KEY
-    url = f"https://finnhub.io/api/v1/quote?symbol={symbol.upper()}&token={api_key}"
+    # Provider priority order
+    providers = []
     
-    async with aiohttp.ClientSession() as session:
+    # 1. Try Finnhub primary key (if not in backoff)
+    if finnhub_available and FINNHUB_API_KEY:
+        providers.append(("Finnhub Primary", lambda: get_price_finnhub(symbol, FINNHUB_API_KEY)))
+    
+    # 2. Try Yahoo Finance
+    providers.append(("Yahoo Finance", lambda: get_price_yfinance(symbol)))
+    
+    # 3. Try Polygon
+    providers.append(("Polygon", lambda: get_price_polygon(symbol)))
+    
+    # 4. Try Alpaca
+    providers.append(("Alpaca", lambda: get_price_alpaca(symbol)))
+
+    # Track if Finnhub specifically failed for backoff logic
+    finnhub_failed = False
+    
+    # Try each provider in order
+    for provider_name, provider_func in providers:
         try:
-            async with session.get(url) as resp:
-                last_request_time = time.time()
-                if resp.status == 429:
-                    # On HTTP 429, set backoff and retry once with secondary key
-                    backoff_until = current_time + 60
-                    rate_limit_until = current_time + 60
-                    print(f"Rate limited on primary key, trying secondary key for {symbol}")
-                    
-                    # Try with secondary key (FINNHUB_API_KEY_2 or FINNHUB_API_KEY_SECOND)
-                    secondary_key = FINNHUB_API_KEY_2 or FINNHUB_API_KEY_SECOND
-                    if secondary_key:
-                        url_secondary = f"https://finnhub.io/api/v1/quote?symbol={symbol.upper()}&token={secondary_key}"
-                        async with session.get(url_secondary) as resp_secondary:
-                            last_request_time = time.time()
-                            if resp_secondary.status == 200:
-                                data = await resp_secondary.json()
-                                price = data.get("c")
-                                if price and price > 0:
-                                    # Save successful result to cache
-                                    price_cache[cache_key] = (price, current_time)
-                                    # Save to database
-                                    async with aiosqlite.connect(DB_NAME) as db:
-                                        await db.execute(
-                                            "INSERT OR REPLACE INTO last_price (symbol, price, last_updated) VALUES (?, ?, CURRENT_TIMESTAMP)",
-                                            (symbol.upper(), price)
-                                        )
-                                        await db.commit()
-                                    return price
-                            elif resp_secondary.status == 429:
-                                print(f"Secondary key also rate limited for {symbol}")
-                                # When 429 occurs, set backoff_until to throttle
-                                backoff_until = current_time + 60
-                    
-                    # Both keys rate limited, return last cached price if available
-                    if cache_key in price_cache:
-                        cached_price, _ = price_cache[cache_key]
-                        print(f"Both keys rate limited, using cached price for {symbol}: ${cached_price:.2f}")
-                        return cached_price
-                    return None
+            print(f"🔄 Trying {provider_name} for {symbol}...")
+            price = await provider_func()
+            
+            if price and price > 0:
+                # Success! Cache the result and save to database
+                completion_time = time.time()  # Use actual completion time for accurate cache timestamps
+                price_cache[cache_key] = (price, completion_time)
                 
-                elif resp.status == 200:
-                    data = await resp.json()
-                    price = data.get("c")
-                    if price and price > 0:
-                        # Save successful result to cache
-                        price_cache[cache_key] = (price, current_time)
-                        # Save to database
-                        async with aiosqlite.connect(DB_NAME) as db:
-                            await db.execute(
-                                "INSERT OR REPLACE INTO last_price (symbol, price, last_updated) VALUES (?, ?, CURRENT_TIMESTAMP)",
-                                (symbol.upper(), price)
-                            )
-                            await db.commit()
-                        return price
-                elif resp.status >= 500:
-                    backoff_until = current_time + 60
-
-                # API call failed, return cached or stored price if available
-                if cache_key in price_cache:
-                    cached_price, _ = price_cache[cache_key]
-                    print(f"API call failed, using cached price for {symbol}: ${cached_price:.2f}")
-                    return cached_price
-
-                db_price = await get_last_price_from_db(symbol)
-                if db_price is not None:
-                    return db_price
-                return None
-
+                # Save to database
+                try:
+                    async with aiosqlite.connect(DB_NAME) as db:
+                        await db.execute(
+                            "INSERT OR REPLACE INTO last_price (symbol, price, last_updated) VALUES (?, ?, CURRENT_TIMESTAMP)",
+                            (symbol.upper(), price)
+                        )
+                        await db.commit()
+                except Exception as db_e:
+                    print(f"⚠️ Database save error for {symbol}: {db_e}")
+                
+                return price
+                
+        except aiohttp.ClientResponseError as e:
+            if e.status == 429 and provider_name == "Finnhub Primary":
+                print(f"⚠️ Finnhub rate limit hit for {symbol}, setting backoff")
+                finnhub_failed = True
+                # Set backoff using current completion time, not start time
+                backoff_completion_time = time.time()
+                backoff_until = backoff_completion_time + 60
+                rate_limit_until = backoff_completion_time + 60
+            else:
+                print(f"❌ {provider_name} HTTP error for {symbol}: {e}")
+            continue
         except Exception as e:
-            print(f"Error fetching price for {symbol}: {e}")
-            backoff_until = current_time + 60
-            # On failure, return last cached price if available
-            if cache_key in price_cache:
-                cached_price, _ = price_cache[cache_key]
-                return cached_price
-            db_price = await get_last_price_from_db(symbol)
-            if db_price is not None:
-                return db_price
-            return None
+            if provider_name == "Finnhub Primary":
+                finnhub_failed = True
+            print(f"❌ {provider_name} failed for {symbol}: {e}")
+            continue
+    
+    # If Finnhub was attempted and failed (not due to backoff), set backoff
+    if finnhub_available and finnhub_failed:
+        backoff_completion_time = time.time()
+        backoff_until = backoff_completion_time + 60
+        rate_limit_until = backoff_completion_time + 60
+        print(f"⚠️ Finnhub failed, setting 60s backoff for future requests")
+
+    # All providers failed - use fallbacks
+    print(f"🔄 All providers failed for {symbol}, trying fallbacks...")
+    
+    # Fallback 1: Use any cached price (regardless of age)
+    if cache_key in price_cache:
+        cached_price, cached_time = price_cache[cache_key]
+        age_hours = (current_time - cached_time) / 3600
+        print(f"📦 Using stale cached price for {symbol}: ${cached_price:.2f} (age: {age_hours:.1f}h)")
+        return cached_price
+    
+    # Fallback 2: Use database price
+    db_price = await get_last_price_from_db(symbol)
+    if db_price is not None:
+        print(f"🗄️ Using database fallback for {symbol}: ${db_price:.2f}")
+        return db_price
+    
+    print(f"❌ No price available for {symbol} from any source")
+    return None
 
 async def get_company_name(symbol: str) -> str:
-    """Get company name from Finnhub API with caching."""
+    """Get company name from Finnhub API with caching and proper error handling."""
     cache_key = symbol.upper()
     current_time = time.time()
 
@@ -181,17 +359,35 @@ async def get_company_name(symbol: str) -> str:
         if current_time - ts < COMPANY_CACHE_TTL:
             return name
 
+    # Don't fetch company names if we're in backoff period
+    if current_time < max(backoff_until, rate_limit_until):
+        if cache_key in company_name_cache:
+            return company_name_cache[cache_key][0]
+        return cache_key
+
     url = f"https://finnhub.io/api/v1/stock/profile2?symbol={cache_key}&token={FINNHUB_API_KEY}"
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(url) as resp:
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                 if resp.status == 200:
-                    data = await resp.json()
-                    name = data.get("name", cache_key)
-                    company_name_cache[cache_key] = (name, current_time)
-                    return name
-        except Exception as exc:
-            print(f"Error fetching company name for {symbol}: {exc}")
+                    content_type = resp.headers.get('content-type', '').lower()
+                    if 'application/json' in content_type:
+                        try:
+                            data = await resp.json()
+                            name = data.get("name", cache_key)
+                            if name and name != cache_key:
+                                company_name_cache[cache_key] = (name, current_time)
+                                return name
+                        except (aiohttp.ContentTypeError, ValueError):
+                            print(f"⚠️ Company name: JSON parsing error for {symbol}")
+                    else:
+                        print(f"⚠️ Company name: Non-JSON response for {symbol}")
+                elif resp.status == 429:
+                    print(f"⚠️ Company name: Rate limited for {symbol}")
+                else:
+                    print(f"⚠️ Company name: Status {resp.status} for {symbol}")
+    except Exception as exc:
+        print(f"Error fetching company name for {symbol}: {exc}")
 
     # Fallback to cached name or the symbol itself
     if cache_key in company_name_cache:
