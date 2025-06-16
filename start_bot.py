@@ -8,29 +8,34 @@ import os
 import sys
 from dotenv import load_dotenv
 
-def check_environment():
-    """Check if all required environment variables are set"""
+def check_environment() -> bool:
+    """Check if all required environment variables are set."""
     print("🔍 Checking environment variables...")
     
     load_dotenv()
-    required_vars = ["FINNHUB_API_KEY", "DISCORD_WEBHOOK_URL", "BOT_COMMAND"]
-    missing_vars = []
-    
-    for var in required_vars:
+    required_vars = ["FINNHUB_API_KEY"]
+    optional_vars = ["DISCORD_WEBHOOK_URL", "BOT_COMMAND"]
+    missing = []
+
+    for var in required_vars + optional_vars:
         value = os.getenv(var)
         if not value:
-            missing_vars.append(var)
+            if var in required_vars:
+                missing.append(var)
+            else:
+                print(f"⚠️ {var}: Not set (optional)")
         else:
             print(f"✅ {var}: {'*' * (len(value) - 4)}{value[-4:]}")
-    
-    if missing_vars:
-        print(f"❌ Missing environment variables: {', '.join(missing_vars)}")
+
+    if missing:
+        print(f"❌ Missing environment variables: {', '.join(missing)}")
         print("💡 Please update your .env file with the required values")
         return False
     
     return True
 
-def main():
+def main() -> None:
+    """Run the helper script to launch the Discord bot."""
     print("🚀 Market Sim Discord Bot")
     print("=" * 50)
     

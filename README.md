@@ -146,12 +146,29 @@ python start_dashboard.py
 
 ### Core Application Files
 
-#### **`botsim_enhanced.py`** - Main Discord Bot
-The heart of the trading simulation featuring:
-- **Discord command handlers**: All trading commands (`!buy`, `!sell`, `!portfolio`, etc.)
-- **Database operations**: User management, transaction processing, portfolio calculations
-- **Real-time market data**: Finnhub API integration for live stock prices
-- **Error handling**: Comprehensive validation and user feedback
+
+#### **`bot.py`** - Bot Startup
+Initializes the Discord bot and loads command cogs. Uses the modular
+`commands/` package for command groups and centralizes setup logic.
+
+#### **`commands/`** - Discord Cogs
+`TradingCog` implements trading actions like `!buy` and `!sell` while
+`StatsCog` covers portfolio, leaderboard and chart commands. `AdminCog`
+provides maintenance tasks such as daily updates and cache management.
+Using cogs groups related commands into classes so each module can
+initialize resources and clean up independently.
+
+#### **`prices.py`** - Price Providers
+Contains functions for fetching stock prices from Finnhub, Yahoo Finance,
+Polygon and Alpaca with caching and rate limit handling.
+
+#### **`database.py`** - Database Helpers
+Initializes the SQLite schema and exposes helper functions for user,
+holdings and history queries.
+
+#### **`botsim_enhanced.py`** - Legacy Wrapper
+Thin compatibility layer re-exporting functions from the new modules so
+existing scripts continue to work.
 
 #### **`dashboard_robinhood.py`** - Web Dashboard
 Modern Flask-based web interface providing:
@@ -283,6 +300,11 @@ MIN_REQUEST_INTERVAL=2  # min seconds between API calls
 PRICE_CACHE_TTL=86400  # price cache duration in seconds
 COMPANY_CACHE_TTL=86400  # company name cache duration
 DATABASE_URL=/data/trading_game.db  # SQLite path or Postgres URL
+Polygon_API_KEY=your_polygon_api_key  # optional Polygon API key
+ALPACA_API_KEY=your_alpaca_key        # optional Alpaca API key
+ALPACA_SECRET_KEY=your_alpaca_secret  # Alpaca secret
+ALPACA_ENDPOINT=https://paper-api.alpaca.markets/v2
+DEFAULT_STARTING_CASH=1000000         # starting cash per user
 ```
 
 **How to Obtain Required Keys:**
@@ -443,8 +465,9 @@ Web Dashboard ← Database Query ← Real-time Price Updates ← Finnhub API
 #### **Starting Capital Configuration**
 ```python
 # Default starting capital: $1,000,000
-# Modify in botsim_enhanced.py, line ~50
-DEFAULT_STARTING_CASH = 1000000
+# Defined in `database.init_db()` when creating the `users` table
+DEFAULT_STARTING_CASH = 1000000  # can be overridden via environment
+# variable `DEFAULT_STARTING_CASH`
 
 # Update existing users with new capital
 python update_capital.py
@@ -772,6 +795,12 @@ python fix_schema.py
 - **Risk Management Tools**: Stop-loss and take-profit orders
 - **Portfolio Analytics**: Risk metrics and performance attribution
 
+## Improvements
+
+- [x] Added type hints across the codebase for better readability
+- [x] Documented every command and helper function with simple docstrings
+- [x] Ensured new modular layout works with legacy imports
+
 ## 🤝 Contributing
 
 ### **Development Setup**
@@ -809,7 +838,7 @@ git push origin feature/your-feature-name
 python validate.py
 
 # Test specific components
-python -c "from botsim_enhanced import get_price; print(get_price('AAPL'))"
+python -c "from prices import get_price; import asyncio; print(asyncio.run(get_price('AAPL')))"
 
 # Check database integrity
 python fix_schema.py --check-only

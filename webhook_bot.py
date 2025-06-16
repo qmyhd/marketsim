@@ -6,19 +6,15 @@ import aiohttp
 import discord
 from dotenv import load_dotenv
 
-from botsim_enhanced import (
-    get_price,
-    preload_price_cache,
-    price_cache,
-    persist_price_cache,
-    DB_NAME,
-)
+from prices import get_price, preload_price_cache, price_cache, persist_price_cache
+from database import DB_NAME
 
 load_dotenv()
 
 WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 
 async def send_message(content: str, file: discord.File | None = None) -> None:
+    """Send a message to the configured webhook or stdout."""
     if WEBHOOK_URL:
         async with aiohttp.ClientSession() as session:
             webhook = discord.Webhook.from_url(WEBHOOK_URL, session=session)
@@ -28,6 +24,7 @@ async def send_message(content: str, file: discord.File | None = None) -> None:
 
 
 async def daily_update() -> None:
+    """Update user portfolios and post a summary message."""
     await preload_price_cache()
     messages = []
     async with aiosqlite.connect(DB_NAME) as db:
@@ -64,6 +61,7 @@ async def daily_update() -> None:
 COMMANDS = {"daily_update": daily_update}
 
 async def main() -> None:
+    """Entry point for running webhook tasks."""
     command = os.getenv("BOT_COMMAND", "daily_update")
     handler = COMMANDS.get(command)
     if not handler:
