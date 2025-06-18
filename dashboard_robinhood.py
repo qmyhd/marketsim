@@ -1,4 +1,48 @@
-# Enhanced Trading Game Dashboard - Robinhood Style
+"""
+Market Sim Web Dashboard - Robinhood Style Interface
+===================================================
+
+A modern Flask-based web dashboard providing real-time portfolio tracking,
+leaderboards, and individual user analytics for the Market Sim trading bot.
+Features a responsive dark theme design inspired by Robinhood's interface.
+
+Key Features:
+- Real-time leaderboard with sortable columns
+- Individual portfolio pages with detailed P&L analysis
+- Interactive charts (pie charts for allocation, line charts for performance)
+- Mobile-responsive Bootstrap 5 design with dark theme
+- Cached data for optimal performance and API rate limiting
+- Health check endpoints for deployment monitoring
+
+Routes:
+- / : Main dashboard with leaderboard and market summary
+- /user/<user_id> : Individual portfolio analysis page
+- /api/leaderboard : JSON API for real-time leaderboard data
+- /api/user/<user_id> : JSON API for user portfolio data
+- /health : Health check endpoint for monitoring
+
+Technical Implementation:
+- Flask web framework with Jinja2 templating
+- SQLite database integration with connection pooling
+- Multi-provider API integration (Finnhub, fallbacks)
+- Intelligent caching system with TTL management
+- Rate limiting and API quota management
+- Chart.js integration for interactive visualizations
+
+Environment Variables:
+- FINNHUB_API_KEY: Primary API key for real-time market data
+- DATABASE_URL: Path to SQLite database file
+- PORT: Web server port (default: 8080, Fly.io compatible)
+- PRICE_CACHE_TTL: Price cache duration in seconds
+- DASHBOARD_CACHE_DURATION: Dashboard data cache duration
+
+Deployment:
+- Optimized for Fly.io free tier deployment
+- Health checks and graceful shutdown handling
+- Memory-efficient caching with size limits
+- Production-ready with gunicorn WSGI server
+"""
+
 from flask import Flask, render_template, url_for, redirect, jsonify
 import sqlite3
 import requests
@@ -6,6 +50,7 @@ from datetime import datetime, date
 import os
 import time
 import atexit
+from typing import Dict, List, Tuple, Optional, Any
 from dotenv import load_dotenv
 
 # Load environment variables

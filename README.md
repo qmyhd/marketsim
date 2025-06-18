@@ -76,6 +76,12 @@ python start_dashboard.py
   - Shows historical performance vs starting value
   - Uploaded as image directly to Discord channel
 
+- `!stats` - Show overall market statistics
+  - Displays total number of active traders
+  - Shows total assets under management (AUM)
+  - Calculates average ROI across all users
+  - Provides market-wide performance metrics
+
 ### Web Dashboard
 
 #### **Main Dashboard Features** (http://localhost:8080)
@@ -166,10 +172,6 @@ Polygon and Alpaca with caching and rate limit handling.
 Initializes the SQLite schema and exposes helper functions for user,
 holdings and history queries.
 
-#### **`botsim_enhanced.py`** - Legacy Wrapper
-Thin compatibility layer re-exporting functions from the new modules so
-existing scripts continue to work.
-
 #### **`dashboard_robinhood.py`** - Web Dashboard
 Modern Flask-based web interface providing:
 - **Leaderboard**: Sortable table with ROI rankings and portfolio values
@@ -187,22 +189,16 @@ Simplified startup scripts that:
 
 ### Database & Utilities
 
-#### **`fix_schema.py`** - Database Maintenance
+#### **`fix_database_schema.py`** - Database Maintenance
 Essential utility for:
 - Schema migrations and updates
 - Data integrity checks and repairs
 - Adding new columns to existing tables
 - Fixing inconsistencies in user data
 
-#### **`update_capital.py`** - Capital Management
-Administrative tool for:
-- Adjusting starting capital for all users
-- Bulk portfolio resets
-- Historical data preservation during capital changes
-- ROI recalculation after adjustments
-
-#### **`validate.py`** - Pre-deployment Validation
+#### **`validate_deployment.py`** - Pre-deployment Validation
 Comprehensive testing script that verifies:
+- Infrastructure and deployment files
 - Database connectivity and schema integrity
 - API key validity (Discord, Finnhub)
 - Environment variable completeness
@@ -366,11 +362,12 @@ python dashboard_robinhood.py
 
 ### 6. First-Time Setup Verification
 ```bash
-# Run the validation script
-python validate.py
+# Run the deployment validation script
+python validate_deployment.py
 ```
 
 **This script checks:**
+- Infrastructure and deployment files
 - Database connectivity
 - API key validity
 - Required file permissions
@@ -470,7 +467,7 @@ DEFAULT_STARTING_CASH = 1000000  # can be overridden via environment
 # variable `DEFAULT_STARTING_CASH`
 
 # Update existing users with new capital
-python update_capital.py
+# Note: Use database management tools or admin commands for capital adjustments
 ```
 
 #### **API Rate Limiting**
@@ -586,7 +583,7 @@ cp .env.example .env
 # Edit .env with your actual API keys
 
 # 5. Test the setup
-python validate.py
+python validate_deployment.py
 
 # 6. Run the bot
 python start_bot.py
@@ -706,8 +703,8 @@ Refer to `DEPLOYMENT_CHECKLIST.md` for the complete step-by-step guide:
 
 #### **Bot Won't Start**
 ```bash
-# Check environment variables
-python validate.py
+# Check environment variables and deployment
+python validate_deployment.py
 
 # Common fixes:
 # 1. Verify .env file exists and has correct keys
@@ -739,7 +736,7 @@ rm trading_game.db  # Warning: Deletes all data!
 python start_bot.py  # Creates fresh database
 
 # Fix schema issues
-python fix_schema.py
+python fix_database_schema.py
 ```
 
 ### **Performance Optimization**
@@ -813,7 +810,7 @@ cd Market_sim
 git checkout -b feature/your-feature-name
 
 # Make changes and test
-python validate.py
+python validate_deployment.py
 python start_bot.py  # Test bot functionality
 python start_dashboard.py  # Test web interface
 
@@ -835,13 +832,13 @@ git push origin feature/your-feature-name
 ### **Testing**
 ```bash
 # Run validation suite
-python validate.py
+python validate_deployment.py
 
 # Test specific components
 python -c "from prices import get_price; import asyncio; print(asyncio.run(get_price('AAPL')))"
 
 # Check database integrity
-python fix_schema.py --check-only
+python fix_database_schema.py --check-only
 ```
 
 ## 📄 License

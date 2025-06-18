@@ -19,19 +19,15 @@ primary_region = "iad"  # Washington D.C. region
 [[services]]
   internal_port = 8080
   protocol = "tcp"
-
   [services.autoscale]
-    min_machines_running = 0
+    min_machines_running = 0  # Critical: Start at 0 for cost savings
     auto_stop_machines = "stop"
     auto_start_machines = true
 
-# No web services needed for Discord bot - it's a background worker
-# But we'll include a minimal health check endpoint
-
 [[vm]]
-  cpu_kind = "shared"
+  cpu_kind = "shared"  # Cheapest option for free tier
   cpus = 1
-  memory_mb = 256
+  memory_mb = 256  # Minimal memory allocation
 
 # Optional: Add health check if you modify bot to include basic HTTP endpoint
 # [[services]]

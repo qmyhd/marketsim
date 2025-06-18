@@ -44,13 +44,12 @@ primary_region = "iad"  # Washington D.C. region
     method = "get"
     path = "/health"
     protocol = "http"
-
   [services.autoscale]
-    min_machines_running = 0
+    min_machines_running = 0  # Critical: Start at 0 for cost savings
     auto_stop_machines = "stop"
     auto_start_machines = true
-
+    
 [[vm]]
-  cpu_kind = "shared"
+  cpu_kind = "shared"  # Cheapest option
   cpus = 1
-  memory_mb = 256
+  memory_mb = 256  # Minimal memory for free tier

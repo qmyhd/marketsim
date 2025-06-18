@@ -11,9 +11,8 @@ from dotenv import load_dotenv
 def check_environment() -> bool:
     """Check if all required environment variables are set."""
     print("🔍 Checking environment variables...")
-    
     load_dotenv()
-    required_vars = ["FINNHUB_API_KEY"]
+    required_vars = ["FINNHUB_API_KEY", "TOKEN"]  # TOKEN is required for Discord bot
     optional_vars = ["DISCORD_WEBHOOK_URL", "BOT_COMMAND"]
     missing = []
 
@@ -38,22 +37,20 @@ def main() -> None:
     """Run the helper script to launch the Discord bot."""
     print("🚀 Market Sim Discord Bot")
     print("=" * 50)
-    
     # Check environment
     if not check_environment():
         sys.exit(1)
     
-    print("\n🤖 Running stateless bot command...")
+    print("\n🤖 Starting Discord bot...")
     print("=" * 50)
 
     try:
-        from webhook_bot import main as bot_main
-        import asyncio
-        asyncio.run(bot_main())
+        from bot import main as bot_main
+        bot_main()
     except KeyboardInterrupt:
         print("\n👋 Bot stopped by user")
     except Exception as e:
-        print(f"\n❌ Error running bot command: {e}")
+        print(f"\n❌ Error running bot: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":

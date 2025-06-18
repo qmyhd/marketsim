@@ -1,8 +1,43 @@
+"""
+Market Sim Administrative Commands Module
+=========================================
+
+This module provides administrative commands for managing the Market Sim bot.
+These commands are restricted to users with administrator permissions and
+handle maintenance tasks like daily updates, cache management, and system operations.
+
+Commands Provided:
+- !daily_update: Generate and post daily portfolio summaries
+- !flushcache: Persist cached prices to database
+- !clearcache: Clear in-memory price cache
+- !reloadcache: Reload price cache from database
+
+Features:
+- Administrator permission checking for security
+- Daily portfolio value calculations and history tracking
+- Cache management for performance optimization
+- Automated portfolio updates with ROI calculations
+- Error handling and validation for all operations
+
+Security:
+- All commands require Discord administrator permissions
+- Database operations are protected with proper error handling
+- No sensitive data exposure in command responses
+
+Usage:
+These commands are typically used by bot administrators to:
+- Perform daily maintenance tasks
+- Manage price cache for optimal performance
+- Generate portfolio reports for all users
+- Troubleshoot data issues
+"""
+
 from discord.ext import commands
 import discord
 import os
 import aiosqlite
 from datetime import date
+from typing import List, Optional, Any
 
 from database import (
     get_all_users,
@@ -17,10 +52,23 @@ from prices import (
 )
 from database import DB_NAME
 
-class AdminCog(commands.Cog):
-    """Administrative commands for managing the bot."""
 
-    def __init__(self, bot: commands.Bot):
+class AdminCog(commands.Cog):
+    """
+    Discord cog containing administrative commands for bot management.
+    
+    This cog provides tools for administrators to manage the bot's
+    operation, including cache management, daily updates, and maintenance tasks.
+    All commands require administrator permissions for security.
+    """
+
+    def __init__(self, bot: commands.Bot) -> None:
+        """
+        Initialize the administrative cog.
+        
+        Args:
+            bot: The Discord bot instance
+        """
         self.bot = bot
 
     async def _portfolio_update(self) -> list[str]:
