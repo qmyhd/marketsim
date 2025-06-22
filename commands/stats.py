@@ -1,6 +1,6 @@
 """
 Market Sim Statistics and Portfolio Commands Module
-===================================================
+==================================================
 
 This module implements portfolio analysis and statistics commands for the Market Sim bot.
 It provides comprehensive portfolio tracking, leaderboards, performance charts, and
@@ -56,15 +56,14 @@ class StatsCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         """
         Initialize the statistics cog.
-        
-        Args:
+          Args:
             bot: The Discord bot instance
         """
         self.bot = bot
 
     @commands.command(name="portfolio")
     async def portfolio(self, ctx: commands.Context) -> None:
-        """Display the user's portfolio with ROI information."""
+        """Display the user's portfolio with detailed ROI information."""
         user_id = str(ctx.author.id)
         rows = await get_holdings(user_id)
         if not rows:
@@ -75,31 +74,74 @@ class StatsCog(commands.Cog):
         header = f"📊 **{ctx.author.display_name}'s Portfolio**\n"
         total_value = cash
         holdings_lines = []
-
+        total_unrealized = 0
+        total_invested = 0
+        
+        # First pass: calculate position values for sorting (minimal API calls)
+        position_data = []
         for symbol, shares, avg_price in rows:
-            company_name = await get_company_name(symbol)
             price = await get_price(symbol)
             if not price:
                 continue
-
+                
             position_value = shares * price
-            unrealized = (price - avg_price) * shares
-            pnl_symbol = "📈" if unrealized >= 0 else "📉"
+            cost_basis = shares * avg_price
+            unrealized = position_value - cost_basis
+            
+            position_data.append({
+                "symbol": symbol,
+                "shares": shares,
+                "avg_price": avg_price,
+                "current_price": price,
+                "position_value": position_value,
+                "cost_basis": cost_basis,
+                "unrealized": unrealized
+            })
+            
+            # Add to totals for all positions
             total_value += position_value
-
+            total_unrealized += unrealized
+            total_invested += cost_basis
+        
+        # Sort by position value (largest first) and limit to top 5 for display
+        position_data.sort(key=lambda x: x["position_value"], reverse=True)
+        top_positions = position_data[:5]
+        
+        # Generate display lines for top 5 positions only
+        for pos in top_positions:
+            company_name = await get_company_name(pos["symbol"])
+            position_roi = ((pos["current_price"] - pos["avg_price"]) / pos["avg_price"]) * 100 if pos["avg_price"] > 0 else 0
+            pnl_symbol = "📈" if pos["unrealized"] >= 0 else "📉"
+            
+            # Format company name with truncation
+            display_name = company_name[:20] + "..." if len(company_name) > 20 else company_name
+            
             holdings_lines.append(
-                f"`{symbol}` ({company_name[:20]}{'...' if len(company_name) > 20 else ''})\n"
-                f"  {shares}@${avg_price:.2f}→${price:.2f} ${position_value:,.0f} {pnl_symbol}${abs(unrealized):,.0f}"
+                f"`{pos['symbol']}` ({display_name})\n"
+                f"  {pos['shares']:,}@${pos['avg_price']:.2f}→${pos['current_price']:.2f} | "
+                f"${pos['position_value']:,.0f} | {pnl_symbol}{position_roi:+.1f}% (${pos['unrealized']:+,.0f})"
             )
+        
+        # Add summary if there are more positions
+        total_positions = len(position_data)
+        if total_positions > 5:
+            holdings_lines.append(f"\n*...and {total_positions - 5} smaller positions*")
 
         holdings_value = total_value - cash
         user = await get_user(user_id)
         initial_value = user[2] if user else 1000000
-        roi = ((total_value - initial_value) / initial_value) * 100 if total_value > 0 else 0
+        overall_roi = ((total_value - initial_value) / initial_value) * 100 if initial_value > 0 else 0
+        
+        # Calculate holdings ROI vs cash allocation
+        holdings_roi = (total_unrealized / total_invested) * 100 if total_invested > 0 else 0
+        cash_percentage = (cash / total_value) * 100 if total_value > 0 else 0
+        holdings_percentage = (holdings_value / total_value) * 100 if total_value > 0 else 0
 
         summary = (
-            f"💰 Cash: ${cash:,.0f} | 💼 Holdings: ${holdings_value:,.0f}\n"
-            f"💎 Total Value: ${total_value:,.0f} | 📈 ROI: {roi:+.2f}%"
+            f"💰 **Cash**: ${cash:,.0f} ({cash_percentage:.1f}%) | "
+            f"💼 **Holdings**: ${holdings_value:,.0f} ({holdings_percentage:.1f}%)\n"
+            f"📈 **Holdings ROI**: {holdings_roi:+.2f}% | "
+            f"🏆 **Portfolio ROI**: {overall_roi:+.2f}%"
         )
 
         message = header + "\n".join(holdings_lines) + f"\n\n{summary}"

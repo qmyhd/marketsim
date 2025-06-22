@@ -35,11 +35,13 @@ async def daily_update() -> None:
             async with db.execute("SELECT symbol, shares FROM holdings WHERE user_id = ?", (user_id,)) as cursor:
                 holdings = await cursor.fetchall()
 
-            total_value = cash
+            holdings_value = 0
             for symbol, shares in holdings:
                 price = await get_price(symbol)
                 if price:
-                    total_value += shares * price
+                    holdings_value += shares * price
+
+            total_value = cash + holdings_value
 
             await db.execute("UPDATE users SET last_value = ? WHERE user_id = ?", (total_value, user_id))
             today = date.today().isoformat()
@@ -49,9 +51,8 @@ async def daily_update() -> None:
             )
 
             total_gain = ((total_value - initial_value) / initial_value) * 100
-            day_gain = ((total_value - last_value) / last_value) * 100 if last_value else 0
             messages.append(
-                f"<@{user_id}> Portfolio ${total_value:,.2f} | ROI {total_gain:+.2f}% | Day {day_gain:+.2f}%"
+                f"<@{user_id}> Cash ${cash:,.2f} | Holdings ${holdings_value:,.2f} | ROI {total_gain:+.2f}%"
             )
         await db.commit()
 

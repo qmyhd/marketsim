@@ -329,7 +329,13 @@ def get_company_name(symbol: str) -> str | None:
     return None
 
 def fetch_leaderboard():
-    """Return sorted leaderboard list and summary statistics."""
+    """
+    Return sorted leaderboard list and summary statistics.
+    
+    Performance Optimization: Uses only cached/database prices for the leaderboard
+    to avoid API rate limits. Fresh prices are only fetched when viewing individual
+    user portfolio pages via fetch_user_portfolio().
+    """
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     
@@ -348,19 +354,18 @@ def fetch_leaderboard():
         cursor.execute("SELECT symbol, shares, avg_price FROM holdings WHERE user_id = ?", (user_id,))
         holdings = cursor.fetchall()
         
-        # Calculate portfolio value
+        # Calculate portfolio value using ONLY cached/database prices for performance
         holdings_value = 0
         total_holdings = len(holdings)
         for symbol, shares, avg_price in holdings:
-            price = get_price(symbol)
-            if price:
-                holdings_value += price * shares
+            # Use database price only - no fresh API calls for leaderboard
+            db_price = get_last_price_from_db(symbol)
+            if db_price:
+                holdings_value += db_price * shares
             else:
-                # Fallback to database for last known price
-                db_price = get_last_price_from_db(symbol)
-                if db_price:
-                    print(f"Using database fallback for {symbol} in leaderboard: ${db_price:.2f}")
-                    holdings_value += db_price * shares
+                # If no cached price available, use average cost as fallback
+                # This prevents API calls but gives approximate values
+                holdings_value += avg_price * shares
         
         total_value = cash + holdings_value
         roi = ((total_value - initial_value) / initial_value) * 100 if initial_value else 0

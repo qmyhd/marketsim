@@ -88,23 +88,22 @@ class AdminCog(commands.Cog):
                 ) as hcur:
                     holdings = await hcur.fetchall()
 
-                total_value = cash
+                holdings_value = 0
                 for symbol, shares in holdings:
                     price = await get_price(symbol)
                     if price:
-                        total_value += shares * price
+                        holdings_value += shares * price
+                
+                total_value = cash + holdings_value
                 await db.execute(
                     "UPDATE users SET last_value = ? WHERE user_id = ?",
                     (total_value, user_id),
                 )
                 await record_history(user_id, total_value)
                 total_gain = ((total_value - initial) / initial) * 100
-                day_gain = (
-                    ((total_value - last_val) / last_val) * 100 if last_val else 0
-                )
                 user = await self.bot.fetch_user(int(user_id))
                 lines.append(
-                    f"{user.name}: ${total_value:,.2f} | ROI {total_gain:+.2f}% | Day {day_gain:+.2f}%"
+                    f"{user.name}: Holdings ${holdings_value:,.2f} | Cash ${cash:,.2f} | All-time ROI {total_gain:+.2f}%"
                 )
             await db.commit()
         return lines
